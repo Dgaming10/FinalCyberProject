@@ -22,13 +22,16 @@ class POP3Server:
                 elif cmd == 'all':
                     all_mails = self._dbService.get_all_received_mails(email)#{'sender_email': m.get('sender').get('email'), 'subject': m.get('subject'),
                     #'creation_date': m.get('creation_date'), 'id': m.get('_id')}
-                    all_list_dict = [Mail(m.get('sender').get('email'), ) for m in all_mails]
+
+                    all_list_dict = [Mail(m.get('sender').get('email'),
+                                          [rec.get('email') for rec in m.get('recipients')], m.get('subject'), m.get('message'), m.get('_id')) for m in all_mails]
+                    print(all_list_dict[0].mongo_id)
                     all_mails_dump = pickle.dumps(all_list_dict)
                     client_sock.send(all_mails_dump)
                 else:
                     mongo_mail = self._dbService.find_email_by_id(cmd)
                     single_mail_obj: Mail = Mail(mongo_mail.get('sender').get('email'),[mail.get('email') for mail in mongo_mail.get('recipients')],
-                                                 mongo_mail.get('subject'), mongo_mail.get('message'))
+                                                 mongo_mail.get('subject'), mongo_mail.get('message'), mongo_mail.get('_id'))
                     mongo_mail_dump = pickle.dumps(single_mail_obj)
 
                     client_sock.send(mongo_mail_dump)

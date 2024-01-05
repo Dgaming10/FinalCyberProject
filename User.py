@@ -131,8 +131,12 @@ class User:
                 self._first_name = user_dict['first_name']
                 self._last_name = user_dict['last_name']
                 self._email = user_dict['email']
+                self._pop3_socket.connect(('127.0.0.1', 8081))
+                self._pop3_socket.send(self._email.encode())
+                self._transition_socket.send(self._email.encode())
+                while self._pop3_socket.recv(1024).decode() != 'ACK':
+                    self._pop3_socket.send(self._email.encode())
                 self.open_mails_window(None)
-
                 receiveThread = threading.Thread(target=self.receive_mails)
                 receiveThread.start()
         else:
@@ -258,7 +262,7 @@ class User:
         for widget in self._single_mail_frame.winfo_children():
             widget.destroy()
         # change to set mail from DB, use Mail class
-        self._pop3_socket.send(str(mail['id']).encode())
+        self._pop3_socket.send(str(mail.mongo_id).encode())
         mail_received_obj = pickle.loads(self._pop3_socket.recv(1024))
         single_mail_frame_label = tk.Label(self._single_mail_frame, text=mail_received_obj.message, bg="lightgray",
                                            relief="raised")
@@ -271,16 +275,15 @@ class User:
     def open_mails_window(self, e=None):
         for widget in self._mails_frame.winfo_children():
             widget.destroy()
-        self._pop3_socket.connect(('127.0.0.1', 8081))
-        self._pop3_socket.send(self._email.encode())
-        self._transition_socket.send(self._email.encode())
-        mails = {}
-        if self._pop3_socket.recv(1024).decode() == 'ACK':
-            self._pop3_socket.send(b'all')
-            # reduce number of keys & fix pop3
-            mails = pickle.loads(self._pop3_socket.recv(1024))
 
-        labels = [f"{mail['sender_email']} -> {mail['subject']} | {mail['creation_date']}"
+
+        mails = {}
+
+        self._pop3_socket.send(b'all')
+        # reduce number of keys & fix pop3
+        mails: [Mail] = pickle.loads(self._pop3_socket.recv(1024))
+
+        labels = [f"{mail.sender} -> {mail.subject} | {mail.creation_date}"
                   for
                   mail in mails]
 

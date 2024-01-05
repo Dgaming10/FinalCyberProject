@@ -73,6 +73,7 @@ class DataBaseService:
         myClient.close()
 
     def find_email_by_id(self, email_id: str):
+        print("EMAIL ID: ", email_id)
         myClient = pymongo.MongoClient(self._connection_string)
         mydb = myClient["CyberProjectDB"]
         mail = mydb['mails'].find_one({'_id': ObjectId(email_id)}, {})
