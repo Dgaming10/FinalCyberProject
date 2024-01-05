@@ -237,7 +237,6 @@ class User:
         self._send_mail_back_button.place(relx=0.5, rely=0.8, anchor=tk.CENTER)
 
         self._send_email_frame.pack(fill='both', expand=1)
-        print(self._mails_top_label.winfo_ismapped())
 
     def send_email(self):
         emails: str = self._send_mail_recipients_entry.get()

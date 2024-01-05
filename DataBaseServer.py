@@ -55,7 +55,7 @@ class DataBaseService:
         myClient.close()
         return ansDICT
 
-    def store_email(self, fromMail, toMails, subject, message, creation_date):
+    def store_email(self, fromMail, toMails, subject, message, creation_date) -> str:
         myClient = pymongo.MongoClient(self._connection_string)
         mydb = myClient["CyberProjectDB"]
         senderOBJ = self.email_to_mongo_obj(fromMail)
@@ -68,9 +68,11 @@ class DataBaseService:
             "recipients": toOBJ
         }
 
-        mydb["mails"].insert_one(new_item)
-
+        to_return = mydb["mails"].insert_one(new_item)
+        print('to_return:',to_return)
         myClient.close()
+
+        return to_return.inserted_id
 
     def find_email_by_id(self, email_id: str):
         print("EMAIL ID: ", email_id)

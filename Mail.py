@@ -2,7 +2,7 @@ import datetime
 
 
 class Mail:
-    def __init__(self, sender, recipients, subject, message, mongo_id):
+    def __init__(self, sender, recipients, subject, message, mongo_id=None):
         self._sender = sender
         self._recipients = recipients
         self._subject = subject
@@ -33,3 +33,7 @@ class Mail:
     @property
     def mongo_id(self) -> str:
         return self._mongo_id
+
+    @mongo_id.setter
+    def mongo_id(self, value):
+        self._mongo_id = value
