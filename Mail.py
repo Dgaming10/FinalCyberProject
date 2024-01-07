@@ -2,6 +2,7 @@ import datetime
 
 
 class Mail:
+    # TODO: FIX creation_date ( remove datetime.now())
     def __init__(self, sender, recipients, subject, message, mongo_id=None):
         self._sender = sender
         self._recipients = recipients

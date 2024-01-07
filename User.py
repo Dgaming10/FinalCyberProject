@@ -6,7 +6,6 @@ import tkinter as tk
 from tkinter import messagebox
 
 import DataBaseServer
-from CustomLabel import CustomLabel
 from Mail import Mail
 
 
@@ -67,6 +66,8 @@ class User:
 
         self._mails_top_label = tk.Label(self._mails_frame, text="MUN MAILS")
         self._mails_top_label.pack(side='top', pady=5)
+
+        self._side_menu_frame = tk.Frame(self._mails_frame, bg="#f0f0f0")  # Add this line
 
         self.initialize_gui()
 
@@ -245,7 +246,7 @@ class User:
         # db = DataBaseServer.DataBaseService()
         # recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
         sendEmail: Mail = Mail(self._email, realEmails, self._send_mail_subject_entry.get(),
-        self._send_mail_message_text.get("1.0", 'end-1c'))
+                               self._send_mail_message_text.get("1.0", 'end-1c'))
         sendEmail_dumps = pickle.dumps(sendEmail)
         sentBytes = self._transition_socket.send(sendEmail_dumps)
         while sentBytes <= 0:
@@ -275,31 +276,55 @@ class User:
         for widget in self._mails_frame.winfo_children():
             widget.destroy()
 
+        def _load_mails(filter_type) -> [Mail]:
+            for widget in self._mails_frame.winfo_children():
+                if widget.winfo_class() == 'Label':
+                    widget.destroy()
 
-        mails = {}
+            if filter_type == 'sent':
+                self._pop3_socket.send(b'sent')
 
-        self._pop3_socket.send(b'all')
-        # reduce number of keys & fix pop3
-        mails: [Mail] = pickle.loads(self._pop3_socket.recv(1024))
+            else:
+                self._pop3_socket.send(b'recv')
 
-        labels = [f"{mail.sender} -> {mail.subject} | {mail.creation_date}"
-                  for
-                  mail in mails]
+            mails: [Mail] = pickle.loads(self._pop3_socket.recv(1024))
+            labels = [f"{mail.sender} -> {mail.subject} | {mail.creation_date}"
+                      for mail in mails]
 
-        for label_text, mail in zip(labels, mails):
-            label = tk.Label(self._mails_frame, text=label_text, bg="lightgray",
-                             relief="raised",
-                             cursor="hand2")
+            for label_text, mail in zip(labels, mails):
+                label = tk.Label(self._mails_frame, text=label_text, bg="lightgray",
+                                 relief="raised", cursor="hand2")
+                label.bind("<Button-1>", lambda event, mail2=mail: self.open_single_mail_window(mail2))
+                label.pack(fill=tk.X)
 
-            label.bind("<Button-1>", lambda event, mail2=mail: self.open_single_mail_window(mail2))
-            label.pack(fill=tk.X)
+            self._mails_frame.pack(fill='both', expand=1)
+
+        _load_mails('recv')
+        self._side_menu_frame = tk.Frame(self._mails_frame, bg="#f0f0f0")
+        # Packing the side menu frame
+        self._side_menu_frame.pack(side='right', fill='y', padx=10, pady=10)
+
+        # Received button
+        received_button = tk.Button(self._side_menu_frame, text="Received",
+                                    command=lambda: _load_mails('recv'))
+        received_button.pack(fill='x', pady=5)
+
+        # Sent button
+        sent_button = tk.Button(self._side_menu_frame, text="Sent",
+                                command=lambda: _load_mails('sent'))
+        sent_button.pack(fill='x', pady=5)
+
+        # Send mail button (assuming you want it inside the mails frame)
         send_mail_button = tk.Button(self._mails_frame, text="Send Mail",
                                      command=self.open_send_mail_window)
-
         send_mail_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
-        self._mails_frame.pack(fill='both', expand=1)
+
+        # Pack the main mails frame
+
         self._single_mail_frame.pack_forget()
         self._send_email_frame.pack_forget()
+
+        # Implement or add placeholders for these methods
 
     def run(self):
         # Start the GUI event loop
@@ -318,9 +343,9 @@ class User:
         # Update the GUI to reflect the new mail
         # For example, adding a new label for the mail
         label = tk.Label(self._mails_frame,
-                            text=f"{mail.sender} -> {mail.subject} | {mail.creation_date}", bg="lightgray",
-                            relief="raised",
-                            cursor="hand2")
+                         text=f"{mail.sender} -> {mail.subject} | {mail.creation_date}", bg="lightgray",
+                         relief="raised",
+                         cursor="hand2")
 
         label.bind("<Button-1>", lambda event, mail2=mail: self.open_single_mail_window(mail2))
         label.pack(fill=tk.X)

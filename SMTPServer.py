@@ -28,7 +28,7 @@ class SMTPServer:
                       sentMail.sender)
                 for email in sentMail.recipients:
                     try:
-                        new_id: str = self._send_email(sentMail)
+                        new_id: str = SMTPServer._send_email(sentMail)
                         email_sock: socket.socket = self._client_dict[email]
                         sentMail.mongo_id = new_id
                         email_sock.send(pickle.dumps(sentMail))
@@ -36,10 +36,8 @@ class SMTPServer:
                     except KeyError:
                         print(email, 'not found / connected at the moment')
 
-
-
         except socket.error:
-
+            self._client_dict.pop(client_sock)
             print("ERROR IN SERVER")
 
     def start(self):
@@ -55,7 +53,8 @@ class SMTPServer:
     def stop(self):
         self._sock.close()
 
-    def _send_email(self, mailToSend: Mail) -> str:
+    @staticmethod
+    def _send_email(mailToSend: Mail) -> str:
         db = DataBaseService()
         return db.store_email(mailToSend.sender, mailToSend.recipients, mailToSend.subject, mailToSend.message,
                               mailToSend.creation_date)
