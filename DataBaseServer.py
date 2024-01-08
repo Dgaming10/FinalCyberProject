@@ -28,7 +28,9 @@ class DataBaseService:
         myClient = pymongo.MongoClient(self._connection_string)
         mydb = myClient["CyberProjectDB"]
         ansList = []
-        for ans in mydb['mails'].find({"sender.email": email}, {}):
+        for ans in mydb['mails'].find({
+            "sender.email": email,
+            'creation_date': {'$lte': datetime.datetime.now()}}, {}):
             ansList.append(ans)
         myClient.close()
         return ansList
@@ -42,7 +44,8 @@ class DataBaseService:
                 "$elemMatch": {
                     "email": email
                 }
-            }
+            },
+            'creation_date': {'$lte': datetime.datetime.now()}
         }, {}):
             ansList.append(ans)
         myClient.close()
@@ -69,7 +72,7 @@ class DataBaseService:
         }
 
         to_return = mydb["mails"].insert_one(new_item)
-        print('to_return:',to_return)
+        print('to_return:', to_return)
         myClient.close()
 
         return to_return.inserted_id
@@ -81,4 +84,3 @@ class DataBaseService:
         mail = mydb['mails'].find_one({'_id': ObjectId(email_id)}, {})
         myClient.close()
         return mail
-

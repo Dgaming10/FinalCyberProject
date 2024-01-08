@@ -2,13 +2,12 @@ import datetime
 
 
 class Mail:
-    # TODO: FIX creation_date ( remove datetime.now())
-    def __init__(self, sender, recipients, subject, message, mongo_id=None):
+    def __init__(self, sender, recipients, subject, message, creation_date=datetime.datetime.now(), mongo_id=None):
         self._sender = sender
         self._recipients = recipients
         self._subject = subject
         self._message = message
-        self._creation_date = datetime.datetime.now()
+        self._creation_date = creation_date
         self._mongo_id = mongo_id
 
     @property

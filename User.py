@@ -1,9 +1,12 @@
+import datetime
 import pickle
 import re
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox
+from time import strptime
+from tkinter import messagebox, ttk
+from tkcalendar import DateEntry
 
 import DataBaseServer
 from Mail import Mail
@@ -22,7 +25,7 @@ class User:
         # Initialize GUI elements
         self.root = tk.Tk()
         self.root.title("MailUN")
-        self.root.geometry("500x500")
+        self.root.geometry("500x600")
         self.root.configure(bg="#f0f0f0")
 
         self._loginPage = tk.Frame(self.root)
@@ -60,14 +63,24 @@ class User:
         self._send_mail_back_button = None
         self._mails_top_label = None
         self._login_register_button = None
+        self._send_mail_scheduled_label = None
+        self._send_mail_scheduled_date = None
+        self._send_email_scheduled_hour = None
+        self._send_email_scheduled_check_btn = None
+        self._send_email_scheduled_minute = None
+        self._send_email_scheduled_hour_label = None
+        self._send_email_scheduled_minute_label = None
 
         self._transition_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._pop3_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._is_scheduled_btn = tk.IntVar()
 
         self._mails_top_label = tk.Label(self._mails_frame, text="MUN MAILS")
         self._mails_top_label.pack(side='top', pady=5)
 
         self._side_menu_frame = tk.Frame(self._mails_frame, bg="#f0f0f0")  # Add this line
+
+        self._current_filter_state = "recv"
 
         self.initialize_gui()
 
@@ -230,23 +243,94 @@ class User:
         self._send_mail_message_text = tk.Text(self._send_email_frame, height=10, width=40)
         self._send_mail_message_text.pack()
 
-        # Send Button
+        self._send_mail_scheduled_label = tk.Label(self._send_email_frame, text="Message:")
+        self._send_mail_scheduled_label.pack()
+
+        self._send_mail_scheduled_date = DateEntry(self._send_email_frame, width=12, background='darkblue',
+                                                   foreground='white', borderwidth=2)
+        self._send_mail_scheduled_date.pack(pady=10)
+
+        self._send_email_scheduled_hour = ttk.Spinbox(
+            self._send_email_frame,
+            from_=0,
+            to=23,
+            wrap=True,
+            width=3
+        )
+        self._send_email_scheduled_hour.set("0")
+        self._send_email_scheduled_hour.place(relx=0.6, rely=0.8, anchor=tk.CENTER)
+
+        self._send_email_scheduled_hour_label = tk.Label(self._send_email_frame, text="Hours:")
+        self._send_email_scheduled_hour_label.place(relx=0.6, rely=0.75, anchor=tk.CENTER)
+
+        self._send_email_scheduled_minute = ttk.Spinbox(
+            self._send_email_frame,
+            from_=0,
+            to=59,
+            wrap=True,
+            width=3
+        )
+        self._send_email_scheduled_minute.set("0")
+        self._send_email_scheduled_minute.place(relx=0.7, rely=0.8, anchor=tk.CENTER)
+
+        self._send_email_scheduled_minute_label = tk.Label(self._send_email_frame, text="Minutes:")
+        self._send_email_scheduled_minute_label.place(relx=0.7, rely=0.75, anchor=tk.CENTER)
+
+        self._send_email_scheduled_check_btn = tk.Checkbutton(
+            self._send_email_frame, text='Enable Scheduled Email', variable=self._is_scheduled_btn,
+            onvalue=True, offvalue=False)
+        self._send_email_scheduled_check_btn.place(relx=0.3, rely=0.8, anchor=tk.CENTER)
+
         self._send_mail_send_button = tk.Button(self._send_email_frame, text="Send", command=self.send_email)
         self._send_mail_send_button.pack()
 
         self._send_mail_back_button = tk.Button(self._send_email_frame, text="Go Back", command=self.open_mails_window)
-        self._send_mail_back_button.place(relx=0.5, rely=0.8, anchor=tk.CENTER)
+        self._send_mail_back_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
 
         self._send_email_frame.pack(fill='both', expand=1)
 
+    def validate_before_send(self):
+        hour = self._send_email_scheduled_hour.get()
+        min = self._send_email_scheduled_minute.get()
+        if self._send_mail_recipients_entry.get() == '':
+            messagebox.showerror("Error", "Please enter a one or more recipient")
+            return False
+        elif self._is_scheduled_btn.get() == 1:
+            try:
+                int(hour)
+                int(min)
+                if not (0 <= int(hour) < 24 and 0 <= int(min) < 60):
+                    int("saf")
+            except ValueError:
+                messagebox.showerror("Error", "Please enter a valid time")
+                return False
+
+        return True
+
     def send_email(self):
+        validation_ans = self.validate_before_send()
+        print("VALIDATION IS :", validation_ans, int(self._send_email_scheduled_minute.get()),
+              int(self._send_email_scheduled_hour.get()))
+
+        if validation_ans is False:
+            return
         emails: str = self._send_mail_recipients_entry.get()
         realEmails = [i for i in emails.split(',') if i != ""]
         print(f"mail sent from {self._email} to: {realEmails}")
         # db = DataBaseServer.DataBaseService()
         # recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
-        sendEmail: Mail = Mail(self._email, realEmails, self._send_mail_subject_entry.get(),
-                               self._send_mail_message_text.get("1.0", 'end-1c'))
+        if self._is_scheduled_btn.get() == 1:
+            new_datetime = datetime.datetime(year=self._send_mail_scheduled_date.get_date().year,
+                                             month=self._send_mail_scheduled_date.get_date().month,
+                                             day=self._send_mail_scheduled_date.get_date().day,
+                                             hour=int(self._send_email_scheduled_hour.get()),
+                                             minute=int(self._send_email_scheduled_minute.get()))
+            sendEmail: Mail = Mail(self._email, realEmails, self._send_mail_subject_entry.get(),
+                                   self._send_mail_message_text.get("1.0", 'end-1c'),
+                                   new_datetime)
+        else:
+            sendEmail: Mail = Mail(self._email, realEmails, self._send_mail_subject_entry.get(),
+                                   self._send_mail_message_text.get("1.0", 'end-1c'))
         sendEmail_dumps = pickle.dumps(sendEmail)
         sentBytes = self._transition_socket.send(sendEmail_dumps)
         while sentBytes <= 0:
@@ -277,9 +361,9 @@ class User:
             widget.destroy()
 
         def _load_mails(filter_type) -> [Mail]:
-            for widget in self._mails_frame.winfo_children():
-                if widget.winfo_class() == 'Label':
-                    widget.destroy()
+            for inner_widget in self._mails_frame.winfo_children():
+                if inner_widget.winfo_class() == 'Label':
+                    inner_widget.destroy()
 
             if filter_type == 'sent':
                 self._pop3_socket.send(b'sent')
@@ -296,10 +380,9 @@ class User:
                                  relief="raised", cursor="hand2")
                 label.bind("<Button-1>", lambda event, mail2=mail: self.open_single_mail_window(mail2))
                 label.pack(fill=tk.X)
-
             self._mails_frame.pack(fill='both', expand=1)
+            self._current_filter_state = filter_type
 
-        _load_mails('recv')
         self._side_menu_frame = tk.Frame(self._mails_frame, bg="#f0f0f0")
         # Packing the side menu frame
         self._side_menu_frame.pack(side='right', fill='y', padx=10, pady=10)
@@ -324,6 +407,8 @@ class User:
         self._single_mail_frame.pack_forget()
         self._send_email_frame.pack_forget()
 
+        _load_mails('recv')
+
         # Implement or add placeholders for these methods
 
     def run(self):
@@ -342,6 +427,8 @@ class User:
     def update_gui_with_new_mail(self, mail):
         # Update the GUI to reflect the new mail
         # For example, adding a new label for the mail
+        if self._current_filter_state == "sent":
+            return
         label = tk.Label(self._mails_frame,
                          text=f"{mail.sender} -> {mail.subject} | {mail.creation_date}", bg="lightgray",
                          relief="raised",
