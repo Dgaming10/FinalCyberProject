@@ -23,5 +23,19 @@ class Base64:
         return ''.join(ascii_converter_list) + padding
 
     @staticmethod
-    def Decrypt(str_to_decrypt) -> str:
-        pass
+    def Decrypt(str_to_decrypt: str) -> str:
+        help_string = ""
+        help_list = []
+
+        while str_to_decrypt[0] != '=' and str_to_decrypt[0] != '':
+            help_string += bin(Base64.base64_list.find(str_to_decrypt[0]))[2:].rjust(6,'0')
+            str_to_decrypt = str_to_decrypt[1:]
+
+        if str_to_decrypt.count('=') == 1:
+            help_string = help_string[:-2]
+        elif str_to_decrypt.count('=') == 2:
+            help_string = help_string[:-4]
+
+        help_list = [chr(int(help_string[i:i+8], 2)) for i in range(0, len(help_string), 8)]
+
+        return ''.join(help_list)

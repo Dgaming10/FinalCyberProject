@@ -42,4 +42,4 @@ for label_text in labels:
 
 # root.mainloop()
 
-print(Base64.Base64.Encrypt("mann"))
+print(Base64.Base64.Decrypt("YWJudmM="))
