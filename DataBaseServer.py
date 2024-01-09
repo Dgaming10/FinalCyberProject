@@ -55,6 +55,7 @@ class DataBaseService:
         myClient = pymongo.MongoClient(self._connection_string)
         mydb = myClient["CyberProjectDB"]
         ansDICT = mydb['users'].find_one({"email": email}, {})
+        print("find one for",email,ansDICT)
         myClient.close()
         return ansDICT
 
@@ -62,7 +63,11 @@ class DataBaseService:
         myClient = pymongo.MongoClient(self._connection_string)
         mydb = myClient["CyberProjectDB"]
         senderOBJ = self.email_to_mongo_obj(fromMail)
-        toOBJ = [self.email_to_mongo_obj(email) for email in toMails]
+        toOBJ = []
+        for email in toMails:
+            tmp = self.email_to_mongo_obj(email)
+            if tmp is not None:
+                toOBJ.append(tmp)
         new_item = {
             "message": message,
             "creation_date": creation_date,

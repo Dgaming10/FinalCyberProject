@@ -4,8 +4,10 @@ import re
 import socket
 import threading
 import tkinter as tk
-from time import strptime
+from time import strptime, sleep
 from tkinter import messagebox, ttk
+from tkinter.constants import DISABLED, NORMAL
+
 from tkcalendar import DateEntry
 
 import DataBaseServer
@@ -17,7 +19,7 @@ from Mail import Mail
 
 class User:
     def __init__(self):
-
+        # TODO: change part of the variables from email to mail
         self._age = None
         self._first_name = None
         self._last_name = None
@@ -121,6 +123,7 @@ class User:
                                        bg="#4caf50",
                                        fg="white", width=20,
                                        font=("Helvetica", 12))
+
         self._login_button.pack(pady=10)
 
         self._login_register_button = tk.Button(self._loginPage, text="Don't have an account? Register!",
@@ -309,6 +312,7 @@ class User:
         return True
 
     def send_email(self):
+
         validation_ans = self.validate_before_send()
         print("VALIDATION IS :", validation_ans, int(self._send_email_scheduled_minute.get()),
               int(self._send_email_scheduled_hour.get()))
@@ -317,6 +321,8 @@ class User:
             return
         emails: str = self._send_mail_recipients_entry.get()
         realEmails = [Base64.Encrypt(i) for i in emails.split(',') if i != ""]
+        # TODO: check if only set(realEmails) will have a different impact
+        realEmails = list(set(realEmails))
         print(f"mail sent from {self._email} to: {realEmails}")
         # db = DataBaseServer.DataBaseService()
         # recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
@@ -340,6 +346,13 @@ class User:
             sentBytes = self._transition_socket.send(sendEmail_dumps)
 
         print("EMAIL SENT!")
+
+        self._send_mail_send_button.configure(state='disabled')
+        self._send_email_frame.after(2000, self.enable_send_button)
+
+    def enable_send_button(self):
+        self._send_mail_send_button.configure(state='normal')
+
 
     def open_register_page(self):
         self._registerPage.pack(fill='both', expand=1)
