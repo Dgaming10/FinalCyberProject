@@ -1,9 +1,9 @@
-import datetime
 import pickle
 import socket
-from DataBaseServer import DataBaseService
 import threading
-import json
+
+from Base64 import Base64
+from DataBaseServer import DataBaseService
 from Mail import Mail
 
 
@@ -23,6 +23,10 @@ class SMTPServer:
                     if isinstance(sentMail, Mail):
                         print("BREAKING")
                         break
+
+                sentMail = Mail(Base64.Decrypt(sentMail.sender), [Base64.Decrypt(i) for i in sentMail.recipients],
+                                sentMail.subject, sentMail.message,
+                                sentMail.creation_date)
 
                 print('RECEIVED', sentMail.recipients, sentMail.message, sentMail.subject, sentMail.creation_date,
                       sentMail.sender)

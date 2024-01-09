@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk
 from tkcalendar import DateEntry
 
 import DataBaseServer
+from Base64 import Base64
 from Mail import Mail
 
 
@@ -315,7 +316,7 @@ class User:
         if validation_ans is False:
             return
         emails: str = self._send_mail_recipients_entry.get()
-        realEmails = [i for i in emails.split(',') if i != ""]
+        realEmails = [Base64.Encrypt(i) for i in emails.split(',') if i != ""]
         print(f"mail sent from {self._email} to: {realEmails}")
         # db = DataBaseServer.DataBaseService()
         # recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
@@ -325,12 +326,14 @@ class User:
                                              day=self._send_mail_scheduled_date.get_date().day,
                                              hour=int(self._send_email_scheduled_hour.get()),
                                              minute=int(self._send_email_scheduled_minute.get()))
-            sendEmail: Mail = Mail(self._email, realEmails, self._send_mail_subject_entry.get(),
-                                   self._send_mail_message_text.get("1.0", 'end-1c'),
+            sendEmail: Mail = Mail(Base64.Encrypt(self._email), realEmails, Base64.Encrypt(self._send_mail_subject_entry.get()),
+                                   Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')),
                                    new_datetime)
         else:
-            sendEmail: Mail = Mail(self._email, realEmails, self._send_mail_subject_entry.get(),
-                                   self._send_mail_message_text.get("1.0", 'end-1c'))
+            sendEmail: Mail = Mail(Base64.Encrypt(self._email), realEmails,
+                                   Base64.Encrypt(self._send_mail_subject_entry.get()),
+                                   Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')))
+
         sendEmail_dumps = pickle.dumps(sendEmail)
         sentBytes = self._transition_socket.send(sendEmail_dumps)
         while sentBytes <= 0:
@@ -348,7 +351,7 @@ class User:
         # change to set mail from DB, use Mail class
         self._pop3_socket.send(str(mail.mongo_id).encode())
         mail_received_obj = pickle.loads(self._pop3_socket.recv(1024))
-        single_mail_frame_label = tk.Label(self._single_mail_frame, text=mail_received_obj.message, bg="lightgray",
+        single_mail_frame_label = tk.Label(self._single_mail_frame, text=Base64.Decrypt(mail_received_obj.message), bg="lightgray",
                                            relief="raised")
 
         single_mail_frame_label.pack(fill=tk.X)
@@ -372,7 +375,7 @@ class User:
                 self._pop3_socket.send(b'recv')
 
             mails: [Mail] = pickle.loads(self._pop3_socket.recv(1024))
-            labels = [f"{mail.sender} -> {mail.subject} | {mail.creation_date}"
+            labels = [f"{mail.sender} -> {Base64.Decrypt(mail.subject)} | {mail.creation_date}"
                       for mail in mails]
 
             for label_text, mail in zip(labels, mails):
@@ -430,7 +433,7 @@ class User:
         if self._current_filter_state == "sent":
             return
         label = tk.Label(self._mails_frame,
-                         text=f"{mail.sender} -> {mail.subject} | {mail.creation_date}", bg="lightgray",
+                         text=f"{mail.sender} -> {Base64.Decrypt(mail.subject)} | {mail.creation_date}", bg="lightgray",
                          relief="raised",
                          cursor="hand2")
 

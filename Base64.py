@@ -3,6 +3,7 @@ class Base64:
 
     @staticmethod
     def Encrypt(str_to_encrypt) -> str:
+        print(str_to_encrypt)
         bin_str = ''.join(str(bin(ord(i)))[2:].rjust(8, '0') for i in str_to_encrypt)
         list_to_add = []
         while len(bin_str) >= 6:
@@ -24,10 +25,11 @@ class Base64:
 
     @staticmethod
     def Decrypt(str_to_decrypt: str) -> str:
+        print(str_to_decrypt)
         help_string = ""
         help_list = []
 
-        while str_to_decrypt[0] != '=' and str_to_decrypt[0] != '':
+        while str_to_decrypt != '' and str_to_decrypt[0] != '=' :
             help_string += bin(Base64.base64_list.find(str_to_decrypt[0]))[2:].rjust(6,'0')
             str_to_decrypt = str_to_decrypt[1:]
 

@@ -28,7 +28,7 @@ class POP3Server:
                     all_list_dict = [Mail(m.get('sender').get('email'),
                                           [rec.get('email') for rec in m.get('recipients')], m.get('subject'),
                                           m.get('message'), m.get('creation_date'), m.get('_id')) for m in all_mails]
-                    print(all_list_dict[0].mongo_id)
+
                     all_mails_dump = pickle.dumps(all_list_dict)
                     client_sock.send(all_mails_dump)
                 elif cmd == 'sent':
@@ -38,7 +38,7 @@ class POP3Server:
                     all_list_dict = [Mail(m.get('sender').get('email'),
                                           [rec.get('email') for rec in m.get('recipients')], m.get('subject'),
                                           m.get('message'), m.get('creation_date'), m.get('_id')) for m in all_mails]
-                    print(all_list_dict[0].mongo_id)
+
                     all_mails_dump = pickle.dumps(all_list_dict)
                     client_sock.send(all_mails_dump)
                 else:
