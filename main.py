@@ -5,7 +5,6 @@ import re
 import DataBaseServer
 from Mail import Mail
 from User import User
-from CustomLabel import CustomLabel
 
 
 def is_valid_password(password) -> bool:

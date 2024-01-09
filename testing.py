@@ -1,5 +1,7 @@
 import tkinter as tk
 
+import Base64
+
 
 def on_label_click(event):
     label = event.widget.cget("text")
@@ -38,4 +40,6 @@ for label_text in labels:
     label.bind("<Button-1>", openNewWindow)
     label.pack(fill=tk.X)
 
-root.mainloop()
+# root.mainloop()
+
+print(Base64.Base64.Encrypt("mann"))
