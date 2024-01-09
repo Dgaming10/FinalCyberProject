@@ -347,6 +347,7 @@ class User:
 
         print("EMAIL SENT!")
 
+        #anti spam
         self._send_mail_send_button.configure(state='disabled')
         self._send_email_frame.after(2000, self.enable_send_button)
 
