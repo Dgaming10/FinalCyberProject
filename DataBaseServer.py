@@ -1,15 +1,11 @@
+import base64
 import datetime
 
 import pymongo
-import base64
-from User import User
 from bson import ObjectId
-
-
 # def mongo_obj_to_User(mongo_dict) -> User:
 #     returnedUser = User(mongo_dict['email'], mongo_dict['first_name'], mongo_dict['last_name'], mongo_dict['age'])
 #     return returnedUser
-
 
 class DataBaseService:
     def __init__(self):

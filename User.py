@@ -4,15 +4,19 @@ import re
 import socket
 import threading
 import tkinter as tk
-from time import strptime, sleep
 from tkinter import messagebox, ttk
-from tkinter.constants import DISABLED, NORMAL
 
 from tkcalendar import DateEntry
 
 import DataBaseServer
 from Base64 import Base64
 from Mail import Mail
+
+SMTP_SERVER_IP = '192.168.0.181'
+POP3_SERVER_IP = '192.168.0.181'
+
+SMTP_SERVER_PORT = 471
+POP3_SERVER_PORT = 470
 
 
 # FIX OPEN SOCKET AGAIN AFTER EXIT AND CONSIDER SENDING THE WHOLE MAIL AT THE BEGINNING
@@ -141,7 +145,7 @@ class User:
                 messagebox.showerror("Login failed!", "Please try again")
             else:
                 messagebox.showinfo("Successful login!", f"Hey {user_dict['first_name']}! Welcome to MailUN")
-                self._transition_socket.connect(('127.0.0.1', 8080))
+                self._transition_socket.connect((SMTP_SERVER_IP, SMTP_SERVER_PORT))
                 print("connected to server from", self._transition_socket)
                 self._loginPage.destroy()
                 self._registerPage.destroy()
@@ -149,7 +153,7 @@ class User:
                 self._first_name = user_dict['first_name']
                 self._last_name = user_dict['last_name']
                 self._email = user_dict['email']
-                self._pop3_socket.connect(('127.0.0.1', 8081))
+                self._pop3_socket.connect((POP3_SERVER_IP, POP3_SERVER_PORT))
                 self._pop3_socket.send(self._email.encode())
                 self._transition_socket.send(self._email.encode())
                 while self._pop3_socket.recv(1024).decode() != 'ACK':
@@ -332,7 +336,8 @@ class User:
                                              day=self._send_mail_scheduled_date.get_date().day,
                                              hour=int(self._send_email_scheduled_hour.get()),
                                              minute=int(self._send_email_scheduled_minute.get()))
-            sendEmail: Mail = Mail(Base64.Encrypt(self._email), realEmails, Base64.Encrypt(self._send_mail_subject_entry.get()),
+            sendEmail: Mail = Mail(Base64.Encrypt(self._email), realEmails,
+                                   Base64.Encrypt(self._send_mail_subject_entry.get()),
                                    Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')),
                                    new_datetime)
         else:
@@ -347,13 +352,12 @@ class User:
 
         print("EMAIL SENT!")
 
-        #anti spam
+        # anti spam
         self._send_mail_send_button.configure(state='disabled')
         self._send_email_frame.after(2000, self.enable_send_button)
 
     def enable_send_button(self):
         self._send_mail_send_button.configure(state='normal')
-
 
     def open_register_page(self):
         self._registerPage.pack(fill='both', expand=1)
@@ -365,7 +369,8 @@ class User:
         # change to set mail from DB, use Mail class
         self._pop3_socket.send(str(mail.mongo_id).encode())
         mail_received_obj = pickle.loads(self._pop3_socket.recv(1024))
-        single_mail_frame_label = tk.Label(self._single_mail_frame, text=Base64.Decrypt(mail_received_obj.message), bg="lightgray",
+        single_mail_frame_label = tk.Label(self._single_mail_frame, text=Base64.Decrypt(mail_received_obj.message),
+                                           bg="lightgray",
                                            relief="raised")
 
         single_mail_frame_label.pack(fill=tk.X)

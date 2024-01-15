@@ -5,7 +5,8 @@ from DataBaseServer import DataBaseService
 import pickle
 
 from Mail import Mail
-
+POP3_SERVER_IP = socket.gethostbyname(socket.gethostname())
+POP3_SERVER_PORT = 470
 
 class POP3Server:
     def __init__(self):
@@ -57,7 +58,7 @@ class POP3Server:
                 break
 
     def run(self):
-        self._socket.bind(('127.0.0.1', 8081))
+        self._socket.bind((POP3_SERVER_IP, POP3_SERVER_PORT))
         self._socket.listen()
         print('pop3 is up')
         while True:

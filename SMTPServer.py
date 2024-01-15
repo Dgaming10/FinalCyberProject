@@ -6,6 +6,8 @@ from Base64 import Base64
 from DataBaseServer import DataBaseService
 from Mail import Mail
 
+SMTP_SERVER_IP = socket.gethostbyname(socket.gethostname())
+SMTP_SERVER_PORT = 471
 
 class SMTPServer:
     def __init__(self, port):
@@ -45,7 +47,7 @@ class SMTPServer:
             print("ERROR IN SERVER")
 
     def start(self):
-        self._sock.bind(('127.0.0.1', self._port))
+        self._sock.bind((SMTP_SERVER_IP, self._port))
         self._sock.listen()
         self._sock = self._sock
         print('server is up')
@@ -65,5 +67,5 @@ class SMTPServer:
 
 
 if __name__ == "__main__":
-    server = SMTPServer(8080)
+    server = SMTPServer(SMTP_SERVER_PORT)
     server.start()
