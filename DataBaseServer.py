@@ -3,39 +3,34 @@ import datetime
 
 import pymongo
 from bson import ObjectId
-# def mongo_obj_to_User(mongo_dict) -> User:
-#     returnedUser = User(mongo_dict['email'], mongo_dict['first_name'], mongo_dict['last_name'], mongo_dict['age'])
-#     return returnedUser
+
 
 class DataBaseService:
     def __init__(self):
         self._connection_string = ("mongodb+srv://root:qazpoi12345@cyberprojectdb.5cnsgy6.mongodb.net/?retryWrites"
-                                   "=true&w=majority")
+                                   "=true&w=majority&ssl=true")
+        self._client = pymongo.MongoClient(self._connection_string)
+        self._db = self._client["CyberProjectDB"]
+
+    def __del__(self):
+        if self._client:
+            self._client.close()
 
     def authenticate_user(self, email, password) -> dict:
-        myClient = pymongo.MongoClient(self._connection_string)
-        mydb = myClient["CyberProjectDB"]
-        for user in mydb['users'].find({"email": email, "password": base64.b64encode(password.encode()).decode()}, {}):
-            myClient.close()
-            return user
-        return {}
+        user = self._db['users'].find_one({"email": email, "password": base64.b64encode(password.encode()).decode()})
+        return user or {}
 
     def get_all_sent_mails(self, email):
-        myClient = pymongo.MongoClient(self._connection_string)
-        mydb = myClient["CyberProjectDB"]
         ansList = []
-        for ans in mydb['mails'].find({
+        for ans in self._db['mails'].find({
             "sender.email": email,
             'creation_date': {'$lte': datetime.datetime.now()}}, {}):
             ansList.append(ans)
-        myClient.close()
         return ansList
 
     def get_all_received_mails(self, email):
-        myClient = pymongo.MongoClient(self._connection_string)
-        mydb = myClient["CyberProjectDB"]
         ansList = []
-        for ans in mydb['mails'].find({
+        for ans in self._db['mails'].find({
             "recipients": {
                 "$elemMatch": {
                     "email": email
@@ -44,20 +39,14 @@ class DataBaseService:
             'creation_date': {'$lte': datetime.datetime.now()}
         }, {}):
             ansList.append(ans)
-        myClient.close()
         return ansList
 
     def email_to_mongo_obj(self, email) -> dict:
-        myClient = pymongo.MongoClient(self._connection_string)
-        mydb = myClient["CyberProjectDB"]
-        ansDICT = mydb['users'].find_one({"email": email}, {})
-        print("find one for",email,ansDICT)
-        myClient.close()
+        ansDICT = self._db['users'].find_one({"email": email}, {})
+        print("find one for", email, ansDICT)
         return ansDICT
 
     def store_email(self, fromMail, toMails, subject, message, creation_date) -> str:
-        myClient = pymongo.MongoClient(self._connection_string)
-        mydb = myClient["CyberProjectDB"]
         senderOBJ = self.email_to_mongo_obj(fromMail)
         toOBJ = []
         for email in toMails:
@@ -72,16 +61,11 @@ class DataBaseService:
             "recipients": toOBJ
         }
 
-        to_return = mydb["mails"].insert_one(new_item)
+        to_return = self._db["mails"].insert_one(new_item)
         print('to_return:', to_return)
-        myClient.close()
-
-        return to_return.inserted_id
+        return str(to_return.inserted_id)
 
     def find_email_by_id(self, email_id: str):
         print("EMAIL ID: ", email_id)
-        myClient = pymongo.MongoClient(self._connection_string)
-        mydb = myClient["CyberProjectDB"]
-        mail = mydb['mails'].find_one({'_id': ObjectId(email_id)}, {})
-        myClient.close()
+        mail = self._db['mails'].find_one({'_id': ObjectId(email_id)}, {})
         return mail

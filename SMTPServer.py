@@ -7,7 +7,8 @@ from DataBaseServer import DataBaseService
 from Mail import Mail
 
 SMTP_SERVER_IP = socket.gethostbyname(socket.gethostname())
-SMTP_SERVER_PORT = 471
+SMTP_SERVER_PORT = 1111
+
 
 class SMTPServer:
     def __init__(self, port):
