@@ -4,7 +4,7 @@ import re
 import socket
 import threading
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 
 from tkcalendar import DateEntry
 
@@ -22,7 +22,51 @@ POP3_SERVER_PORT = 1112
 # FIX OPEN SOCKET AGAIN AFTER EXIT AND CONSIDER SENDING THE WHOLE MAIL AT THE BEGINNING
 
 class User:
+    """
+    Class representing a user in the MailUN application.
+
+    Attributes:
+    - _age (int): The age of the user.
+    - _first_name (str): The first name of the user.
+    - _last_name (str): The last name of the user.
+    - _email (str): The email address of the user.
+    - root (tk.Tk): The main Tkinter window.
+    - _loginPage (tk.Frame): The login page frame.
+    - _registerPage (tk.Frame): The registration page frame.
+    - _mails_frame (tk.Frame): The frame for displaying mails.
+    - _single_mail_frame (tk.Frame): The frame for displaying a single mail.
+    - _send_email_frame (tk.Frame): The frame for sending emails.
+    - _registration_label_register (tk.Label): Label for registration form.
+    - ... (Other GUI elements)
+
+    Methods:
+    - __init__: Initialize the User instance.
+    - initialize_gui: Initialize the GUI elements.
+    - is_valid_password: Check if a password is valid.
+    - is_valid_username: Check if a username is valid.
+    - is_valid_email: Check if an email is valid.
+    - login_page: Display the login page.
+    - login: Handle the login process.
+    - register: Handle the registration process.
+    - register_page: Display the registration page.
+    - open_loginPage: Open the login page.
+    - select_file: Open a file dialog to select a file.
+    - open_send_mail_window: Open the window for sending emails.
+    - validate_before_send: Validate input before sending an email.
+    - send_email: Send an email.
+    - enable_send_button: Enable the send email button after a delay.
+    - open_register_page: Open the registration page.
+    - open_single_mail_window: Open the window for a single mail.
+    - open_mails_window: Open the window for displaying mails.
+    - run: Start the GUI event loop.
+    - receive_mails: Receive mails in a separate thread.
+    - update_gui_with_new_mail: Update the GUI with a new mail.
+    """
+
     def __init__(self):
+        """
+        Initialize the User instance.
+        """
         # TODO: change part of the variables from email to mail
         self._age = None
         self._first_name = None
@@ -81,6 +125,7 @@ class User:
         self._transition_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._pop3_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._is_scheduled_btn = tk.IntVar()
+        self._receive_thread: threading.Thread = None
 
         self._mails_top_label = tk.Label(self._mails_frame, text="MUN MAILS")
         self._mails_top_label.pack(side='top', pady=5)
@@ -92,6 +137,10 @@ class User:
         self.initialize_gui()
 
     def initialize_gui(self):
+        """
+        Initialize the GUI elements.
+        """
+
         # Add GUI initialization logic here
         self.login_page()
         self.register_page()
@@ -99,17 +148,47 @@ class User:
         self.root.mainloop()
 
     def is_valid_password(self, password) -> bool:
+        """
+        Check if a password is valid.
+
+        Parameters:
+        - password (str): The password to be validated.
+
+        Returns:
+        bool: True if the password is valid, False otherwise.
+        """
         password_pattern = r"^[a-zA-Z0-9\-_\.!@#$%]{11,16}$"
         return re.match(password_pattern, password) is not None
 
     def is_valid_username(self, username) -> bool:
+        """
+        Check if a username is valid.
+
+        Parameters:
+        - username (str): The username to be validated.
+
+        Returns:
+        bool: True if the username is valid, False otherwise.
+        """
         username_pattern = r"^[a-zA-Z0-9\-_\.]{5,16}$"
         return re.match(username_pattern, username) is not None
 
     def is_valid_email(self, email) -> bool:
+        """
+        Check if an email is valid.
+
+        Parameters:
+        - email (str): The email to be validated.
+
+        Returns:
+        bool: True if the email is valid, False otherwise.
+        """
         return email.endswith('@mun.com') and self.is_valid_username(email[:email.rfind('@')])
 
     def login_page(self):
+        """
+        Display the login page.
+        """
         self._email_label = tk.Label(self._loginPage, text="Email", bg="#f0f0f0")
         self._email_label.pack(pady=10)
 
@@ -135,11 +214,19 @@ class User:
         self._login_register_button.pack(pady=10)
 
     def login(self, email, password):
+        """
+        Handle the login process.
+
+        Parameters:
+        - email (str): The user's email.
+        - password (str): The user's password.
+        """
         # Add your login logic here
         if self.is_valid_email(email) and self.is_valid_password(password):
             messagebox.showinfo("Login", f"Logged in with email: {email}")
             db = DataBaseServer.DataBaseService()
             user_dict = db.authenticate_user(email, password)
+            del db
             print(user_dict)
             if len(user_dict.keys()) == 0:
                 messagebox.showerror("Login failed!", "Please try again")
@@ -159,12 +246,15 @@ class User:
                 while self._pop3_socket.recv(1024).decode() != 'ACK':
                     self._pop3_socket.send(self._email.encode())
                 self.open_mails_window(None)
-                receiveThread = threading.Thread(target=self.receive_mails)
-                receiveThread.start()
+                self._receive_thread = threading.Thread(target=self.receive_mails)
+                self._receive_thread.start()
         else:
             messagebox.showerror("Error", "Invalid email or password format")
 
     def register(self):
+        """
+        Handle the registration process.
+        """
         email = self._email_entry.get()
         password = self._password_entry.get()
 
@@ -175,6 +265,9 @@ class User:
             messagebox.showerror("Error", "Invalid email format")
 
     def register_page(self):
+        """
+        Display the registration page.
+        """
         self._registration_label_register = tk.Label(self._registerPage, text="Registration Form",
                                                      font=("Helvetica", 16))
         self._registration_label_register.pack(pady=10)
@@ -223,10 +316,16 @@ class User:
         self._login_button1.pack(pady=10)
 
     def open_loginPage(self):
+        """
+        Open the login page.
+        """
         self._loginPage.pack(fill='both', expand=1)
         self._registerPage.forget()
 
     def open_send_mail_window(self):
+        """
+        Open the window for sending emails.
+        """
         self._mails_frame.pack_forget()
         for widget in self._send_email_frame.winfo_children():
             widget.destroy()
@@ -298,6 +397,12 @@ class User:
         self._send_email_frame.pack(fill='both', expand=1)
 
     def validate_before_send(self):
+        """
+        Validate input before sending an email.
+
+        Returns:
+        bool: True if the input is valid, False otherwise.
+        """
         hour = self._send_email_scheduled_hour.get()
         min = self._send_email_scheduled_minute.get()
         if self._send_mail_recipients_entry.get() == '':
@@ -316,7 +421,9 @@ class User:
         return True
 
     def send_email(self):
-
+        """
+        Send an email.
+        """
         validation_ans = self.validate_before_send()
         print("VALIDATION IS :", validation_ans, int(self._send_email_scheduled_minute.get()),
               int(self._send_email_scheduled_hour.get()))
@@ -357,13 +464,25 @@ class User:
         self._send_email_frame.after(2000, self.enable_send_button)
 
     def enable_send_button(self):
+        """
+        Enable the send email button after a delay.
+        """
         self._send_mail_send_button.configure(state='normal')
 
     def open_register_page(self):
+        """
+        Open the registration page.
+        """
         self._registerPage.pack(fill='both', expand=1)
         self._loginPage.forget()
 
     def open_single_mail_window(self, mail):
+        """
+        Open the window for a single mail.
+
+        Parameters:
+        - mail: The mail object.
+        """
         for widget in self._single_mail_frame.winfo_children():
             widget.destroy()
         # change to set mail from DB, use Mail class
@@ -379,6 +498,12 @@ class User:
         self._single_mail_frame.pack(fill='both', expand=1)
 
     def open_mails_window(self, e=None):
+        """
+        Open the window for displaying mails.
+
+        Parameters:
+        - e: An optional event parameter.
+        """
         for widget in self._mails_frame.winfo_children():
             widget.destroy()
 
@@ -392,8 +517,13 @@ class User:
 
             else:
                 self._pop3_socket.send(b'recv')
-
-            mails: [Mail] = pickle.loads(self._pop3_socket.recv(1024))
+            len_to_receive = self._pop3_socket.recv(4).decode()
+            print("len_to_receive:",len_to_receive)
+            self._pop3_socket.send(b'ACK')
+            data_received = self._pop3_socket.recv(int(len_to_receive))
+            print(data_received, len(data_received))
+            mails: [Mail] = pickle.loads(data_received)
+            print("THIS IS: ", mails)
             labels = [f"{mail.sender} -> {Base64.Decrypt(mail.subject)} | {mail.creation_date}"
                       for mail in mails]
 
@@ -434,10 +564,16 @@ class User:
         # Implement or add placeholders for these methods
 
     def run(self):
+        """
+        Start the GUI event loop.
+        """
         # Start the GUI event loop
         self.root.mainloop()
 
     def receive_mails(self):
+        """
+        Receive mails in a separate thread.
+        """
         while True:
             code = self._transition_socket.recv(1024)
             print("CODE IS: ", code)
@@ -447,6 +583,12 @@ class User:
             self.root.after(0, lambda: self.update_gui_with_new_mail(mailReceived))
 
     def update_gui_with_new_mail(self, mail):
+        """
+        Update the GUI with a new mail.
+
+        Parameters:
+        - mail: The new mail object.
+        """
         # Update the GUI to reflect the new mail
         # For example, adding a new label for the mail
         if self._current_filter_state == "sent":

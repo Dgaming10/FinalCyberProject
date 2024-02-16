@@ -1,5 +1,7 @@
 import tkinter as tk
+import time
 
+import pyotp
 import Base64
 
 
@@ -41,5 +43,14 @@ for label_text in labels:
     label.pack(fill=tk.X)
 
 # root.mainloop()
-
+def print_stuff():
+    with open("C:\\Users\\danny\\PycharmProjects\\FinalCyberProject\\newFile.jpg",'rb') as p:
+        print(len(p.read()))
 print(Base64.Base64.Decrypt("YWJudmM="))
+totp = pyotp.TOTP('base32secret3232')
+totp.now() # => 492039
+
+# OTP verified for current time
+totp.verify(492039) # => True
+time.sleep(30)
+totp.verify(492039) # => False
