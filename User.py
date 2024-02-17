@@ -476,6 +476,13 @@ class User:
         self._registerPage.pack(fill='both', expand=1)
         self._loginPage.forget()
 
+    def saveMail(self, mail: Mail):
+        file_to_save = tk.filedialog.asksaveasfile(defaultextension='.txt', filetypes=[("Text file", ".txt")])
+        file_content = (f'Date:{mail.creation_date}\nFrom:{mail.sender}\nTo:{mail.recipients}\nSubject:{Base64.Decrypt(mail.subject)}\n'
+                        f'Message:{Base64.Decrypt(mail.message)}')
+        file_to_save.write(file_content)
+        file_to_save.close()
+
     def open_single_mail_window(self, mail):
         """
         Open the window for a single mail.
@@ -494,6 +501,8 @@ class User:
 
         single_mail_frame_label.pack(fill=tk.X)
         single_mail_frame_label.bind("<Button-1>", self.open_mails_window)
+        self._single_mail_save_button = tk.Button(self._single_mail_frame, text="Save email", command=lambda m=mail: self.saveMail(m))
+        self._single_mail_save_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
         self._mails_frame.pack_forget()
         self._single_mail_frame.pack(fill='both', expand=1)
 
@@ -504,6 +513,7 @@ class User:
         Parameters:
         - e: An optional event parameter.
         """
+        print('current:', self._current_filter_state)
         for widget in self._mails_frame.winfo_children():
             widget.destroy()
 
@@ -518,7 +528,7 @@ class User:
             else:
                 self._pop3_socket.send(b'recv')
             len_to_receive = self._pop3_socket.recv(4).decode()
-            print("len_to_receive:",len_to_receive)
+            print("len_to_receive:", len_to_receive)
             self._pop3_socket.send(b'ACK')
             data_received = self._pop3_socket.recv(int(len_to_receive))
             print(data_received, len(data_received))
@@ -559,7 +569,7 @@ class User:
         self._single_mail_frame.pack_forget()
         self._send_email_frame.pack_forget()
 
-        _load_mails('recv')
+        _load_mails(self._current_filter_state)
 
         # Implement or add placeholders for these methods
 

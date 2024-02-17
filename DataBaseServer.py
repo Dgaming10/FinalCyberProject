@@ -1,10 +1,9 @@
 import base64
 import datetime
 
+import gridfs
 import pymongo
 from bson import ObjectId
-import gridfs
-import mimetypes
 
 
 class DataBaseService:
