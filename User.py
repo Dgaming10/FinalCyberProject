@@ -4,11 +4,13 @@ import re
 import socket
 import threading
 import tkinter as tk
+from os import path
 from tkinter import messagebox, ttk, filedialog
 
 from tkcalendar import DateEntry
 
 import DataBaseServer
+import globals_module
 from Base64 import Base64
 from Mail import Mail
 
@@ -68,6 +70,7 @@ class User:
         Initialize the User instance.
         """
         # TODO: change part of the variables from email to mail
+        self._files_list = []
         self._age = None
         self._first_name = None
         self._last_name = None
@@ -322,10 +325,17 @@ class User:
         self._loginPage.pack(fill='both', expand=1)
         self._registerPage.forget()
 
+    def select_files(self):
+        filename = tk.filedialog.askopenfilename(title="Select files", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+        self._files_list = [filename]
+
     def open_send_mail_window(self):
         """
         Open the window for sending emails.
         """
+        self._transition_socket.send(b'CLOSE')
+        self._receive_thread = None
+
         self._mails_frame.pack_forget()
         for widget in self._send_email_frame.winfo_children():
             widget.destroy()
@@ -391,6 +401,10 @@ class User:
         self._send_mail_send_button = tk.Button(self._send_email_frame, text="Send", command=self.send_email)
         self._send_mail_send_button.pack()
 
+        self._send_mail_open_file_button = tk.Button(self._send_email_frame, text="Choose files"
+                                                     , command=self.select_files)
+        self._send_mail_open_file_button.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
+
         self._send_mail_back_button = tk.Button(self._send_email_frame, text="Go Back", command=self.open_mails_window)
         self._send_mail_back_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
 
@@ -453,6 +467,35 @@ class User:
                                    Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')))
 
         sendEmail_dumps = pickle.dumps(sendEmail)
+        self._transition_socket.send(len(self._files_list).to_bytes(4, byteorder='big'))
+        self._transition_socket.recv(3)
+        print(self._files_list)
+        for file_path in self._files_list:
+            print("current:", file_path)
+            file_path_name, file_path_ex = path.splitext(path.basename(file_path))
+            file_path_ex = file_path_ex[1:]
+            if len(file_path_name) > globals_module.FILE_NAME_LIMIT:
+                file_path_name = file_path_name[:globals_module.FILE_NAME_LIMIT]
+
+            if len(file_path_ex) > globals_module.FILE_EXTENSION_LIMIT:
+                file_path_ex = file_path_ex[:globals_module.FILE_EXTENSION_LIMIT]
+
+            print(file_path_name,file_path_ex)
+
+            self._transition_socket.send(file_path_name.encode())
+            self._transition_socket.recv(3)
+            self._transition_socket.send(file_path_ex.encode())
+            self._transition_socket.recv(3)
+            current_file = open(file_path, 'rb')
+            current_file_content = current_file.read()
+            current_file.close()
+            self._transition_socket.send(len(current_file_content).to_bytes(4, byteorder='big'))
+            self._transition_socket.recv(3)
+            self._transition_socket.send(current_file_content)
+            self._transition_socket.recv(3)
+
+        self._transition_socket.send(len(sendEmail_dumps).to_bytes(4, byteorder='big'))
+        self._transition_socket.recv(3)
         sentBytes = self._transition_socket.send(sendEmail_dumps)
         while sentBytes <= 0:
             sentBytes = self._transition_socket.send(sendEmail_dumps)
@@ -513,6 +556,10 @@ class User:
         Parameters:
         - e: An optional event parameter.
         """
+        if self._receive_thread is not None:
+            self._receive_thread = threading.Thread(target=self.receive_mails)
+            self._receive_thread.start()
+
         print('current:', self._current_filter_state)
         for widget in self._mails_frame.winfo_children():
             widget.destroy()
@@ -586,11 +633,15 @@ class User:
         """
         while True:
             code = self._transition_socket.recv(1024)
+            if code == b'-1':
+                print('thread closed')
+                break
             print("CODE IS: ", code)
             mailReceived: Mail = pickle.loads(code)
             print("RECEIVED", mailReceived, mailReceived.recipients, mailReceived.sender)
             print("IM", self._email)
             self.root.after(0, lambda: self.update_gui_with_new_mail(mailReceived))
+        print('bye')
 
     def update_gui_with_new_mail(self, mail):
         """

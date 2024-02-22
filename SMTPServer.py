@@ -1,6 +1,7 @@
 import pickle
 import socket
 import threading
+import globals_module
 
 from Base64 import Base64
 from DataBaseServer import DataBaseService
@@ -48,9 +49,33 @@ class SMTPServer:
         try:
             mail_addr = client_sock.recv(1024).decode()
             self._client_dict[mail_addr] = client_sock
+            files = []
             while True:
                 while True:
-                    sentMail: Mail = pickle.loads(client_sock.recv(1024))
+                    client_msg = client_sock.recv(5)
+                    if client_msg == b'CLOSE':
+                        client_sock.send(b'-1')
+                        continue
+                    num_files: int = int.from_bytes(client_msg, byteorder='big')
+                    client_sock.send(b'ACK')
+                    for i in range(num_files):
+                        file_i_name = client_sock.recv(globals_module.FILE_NAME_LIMIT).decode()
+                        client_sock.send(b'ACK')
+                        file_i_ex = client_sock.recv(globals_module.FILE_EXTENSION_LIMIT).decode()
+                        client_sock.send(b'ACK')
+                        file_i_length = int.from_bytes(client_sock.recv(4), byteorder='big')
+                        client_sock.send(b'ACK')
+                        file_i = client_sock.recv(file_i_length)
+                        client_sock.send(b'ACK')
+                        files.append((file_i, file_i_ex, file_i_name))
+                    for tup in files:
+                        file = open(f'fileReceived/{tup[2]}.{tup[1]}', 'wb')
+                        file.write(tup[0])
+                        file.close()
+
+                    pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
+                    client_sock.send(b'ACK')
+                    sentMail: Mail = pickle.loads(client_sock.recv(pickle_mail_len))
                     if isinstance(sentMail, Mail):
                         print("BREAKING")
                         break
