@@ -12,6 +12,7 @@ from tkcalendar import DateEntry
 import DataBaseServer
 import globals_module
 from Base64 import Base64
+from File import File
 from Mail import Mail
 
 SMTP_SERVER_IP = '192.168.0.181'
@@ -129,6 +130,7 @@ class User:
         self._pop3_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._is_scheduled_btn = tk.IntVar()
         self._receive_thread: threading.Thread = None
+        self._run_receive_thread = True
 
         self._mails_top_label = tk.Label(self._mails_frame, text="MUN MAILS")
         self._mails_top_label.pack(side='top', pady=5)
@@ -249,8 +251,6 @@ class User:
                 while self._pop3_socket.recv(1024).decode() != 'ACK':
                     self._pop3_socket.send(self._email.encode())
                 self.open_mails_window(None)
-                self._receive_thread = threading.Thread(target=self.receive_mails)
-                self._receive_thread.start()
         else:
             messagebox.showerror("Error", "Invalid email or password format")
 
@@ -326,14 +326,17 @@ class User:
         self._registerPage.forget()
 
     def select_files(self):
-        filename = tk.filedialog.askopenfilename(title="Select files", filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
-        self._files_list = [filename]
+        filename = tk.filedialog.askopenfilenames(title="Select files",
+                                                  filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
+        self._files_list = filename
 
     def open_send_mail_window(self):
         """
         Open the window for sending emails.
         """
+        self._run_receive_thread = False
         self._transition_socket.send(b'CLOSE')
+        self._receive_thread.join()
         self._receive_thread = None
 
         self._mails_frame.pack_forget()
@@ -467,12 +470,9 @@ class User:
                                    Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')))
 
         sendEmail_dumps = pickle.dumps(sendEmail)
-        self._transition_socket.send(len(self._files_list).to_bytes(4, byteorder='big'))
-        self._transition_socket.recv(3)
-        print(self._files_list)
-        for file_path in self._files_list:
-            print("current:", file_path)
-            file_path_name, file_path_ex = path.splitext(path.basename(file_path))
+        file_object_list = []
+        for i in range(len(self._files_list)):
+            file_path_name, file_path_ex = path.splitext(path.basename(self._files_list[i]))
             file_path_ex = file_path_ex[1:]
             if len(file_path_name) > globals_module.FILE_NAME_LIMIT:
                 file_path_name = file_path_name[:globals_module.FILE_NAME_LIMIT]
@@ -480,20 +480,18 @@ class User:
             if len(file_path_ex) > globals_module.FILE_EXTENSION_LIMIT:
                 file_path_ex = file_path_ex[:globals_module.FILE_EXTENSION_LIMIT]
 
-            print(file_path_name,file_path_ex)
-
-            self._transition_socket.send(file_path_name.encode())
-            self._transition_socket.recv(3)
-            self._transition_socket.send(file_path_ex.encode())
-            self._transition_socket.recv(3)
-            current_file = open(file_path, 'rb')
+            current_file = open(self._files_list[i], 'rb')
             current_file_content = current_file.read()
             current_file.close()
-            self._transition_socket.send(len(current_file_content).to_bytes(4, byteorder='big'))
-            self._transition_socket.recv(3)
-            self._transition_socket.send(current_file_content)
-            self._transition_socket.recv(3)
 
+            file_object_list.append(File(file_path_name, file_path_ex, current_file_content))
+
+        print(file_object_list)
+        files_list_dumps = pickle.dumps(file_object_list)
+        self._transition_socket.send(len(files_list_dumps).to_bytes(4, byteorder='big'))
+        self._transition_socket.recv(3)
+        self._transition_socket.send(files_list_dumps)
+        self._transition_socket.recv(3)
         self._transition_socket.send(len(sendEmail_dumps).to_bytes(4, byteorder='big'))
         self._transition_socket.recv(3)
         sentBytes = self._transition_socket.send(sendEmail_dumps)
@@ -521,10 +519,28 @@ class User:
 
     def saveMail(self, mail: Mail):
         file_to_save = tk.filedialog.asksaveasfile(defaultextension='.txt', filetypes=[("Text file", ".txt")])
-        file_content = (f'Date:{mail.creation_date}\nFrom:{mail.sender}\nTo:{mail.recipients}\nSubject:{Base64.Decrypt(mail.subject)}\n'
-                        f'Message:{Base64.Decrypt(mail.message)}')
+        file_content = (
+            f'Date:{mail.creation_date}\nFrom:{mail.sender}\nTo:{mail.recipients}\nSubject:{Base64.Decrypt(mail.subject)}\n'
+            f'Message:{Base64.Decrypt(mail.message)}')
         file_to_save.write(file_content)
         file_to_save.close()
+
+    def save_file(self, file_info):
+        print('file_info:', file_info)
+        file_path = filedialog.asksaveasfilename(initialfile=f'{file_info[1]}.{file_info[2]}',
+                                                 defaultextension=f'.{file_info[2]}',
+                                                 filetypes=[("All files", "*.*")])
+        if file_path:
+            self._pop3_socket.send(b'file_con')
+            self._pop3_socket.recv(3)
+            self._pop3_socket.send(str(file_info[0]).encode())
+            file_content_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
+            self._pop3_socket.send(b'ACK')
+            file_content = self._pop3_socket.recv(file_content_length)
+            selected_file = open(file_path, 'wb')
+            selected_file.write(file_content)
+            selected_file.close()
+            print("SAVED!!!!!")
 
     def open_single_mail_window(self, mail):
         """
@@ -537,15 +553,38 @@ class User:
             widget.destroy()
         # change to set mail from DB, use Mail class
         self._pop3_socket.send(str(mail.mongo_id).encode())
-        mail_received_obj = pickle.loads(self._pop3_socket.recv(1024))
+        mail_received_obj_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
+        self._pop3_socket.send(b'ACK')
+        mail_received_obj: Mail = pickle.loads(self._pop3_socket.recv(mail_received_obj_length))
         single_mail_frame_label = tk.Label(self._single_mail_frame, text=Base64.Decrypt(mail_received_obj.message),
                                            bg="lightgray",
                                            relief="raised")
 
         single_mail_frame_label.pack(fill=tk.X)
         single_mail_frame_label.bind("<Button-1>", self.open_mails_window)
-        self._single_mail_save_button = tk.Button(self._single_mail_frame, text="Save email", command=lambda m=mail: self.saveMail(m))
-        self._single_mail_save_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
+
+        elements_list = [f'{tup[1]}.{tup[2]}' for tup in mail_received_obj.files_info]
+        print(mail_received_obj.files_info)
+        # Calculate the number of rows and columns based on the number of elements
+        rows = len(elements_list) // 2 + 1  # Assuming 2 columns, adjust as needed
+        cols = 2
+
+        grid_frame = tk.Frame(self._single_mail_frame)
+        grid_frame.pack(fill='both', expand=1)
+
+        # Create buttons and place them in a grid
+        for i, element in enumerate(elements_list):
+            print("CURRNET ENUM:", i, element)
+            button = tk.Button(grid_frame, text=element,
+                               command=lambda index=i: self.save_file(mail_received_obj.files_info[index]))
+            row, col = divmod(i, cols)
+            button.grid(row=row, column=col, padx=5, pady=5)
+
+        # Create and pack the save button
+        self._single_mail_save_button = tk.Button(self._single_mail_frame, text="Save email",
+                                                  command=lambda: self.saveMail(mail))
+        self._single_mail_save_button.pack(side=tk.BOTTOM, pady=10)
+
         self._mails_frame.pack_forget()
         self._single_mail_frame.pack(fill='both', expand=1)
 
@@ -556,9 +595,11 @@ class User:
         Parameters:
         - e: An optional event parameter.
         """
-        if self._receive_thread is not None:
+        if self._receive_thread is None:
             self._receive_thread = threading.Thread(target=self.receive_mails)
             self._receive_thread.start()
+            self._run_receive_thread = True
+            print('thread created')
 
         print('current:', self._current_filter_state)
         for widget in self._mails_frame.winfo_children():
@@ -631,10 +672,11 @@ class User:
         """
         Receive mails in a separate thread.
         """
-        while True:
+        while self._run_receive_thread:
+            print("STARTING")
             code = self._transition_socket.recv(1024)
+            print("CODE1 IS: ", code)
             if code == b'-1':
-                print('thread closed')
                 break
             print("CODE IS: ", code)
             mailReceived: Mail = pickle.loads(code)

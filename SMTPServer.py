@@ -5,6 +5,7 @@ import globals_module
 
 from Base64 import Base64
 from DataBaseServer import DataBaseService
+from File import File
 from Mail import Mail
 
 SMTP_SERVER_IP = '192.168.0.181'
@@ -52,26 +53,27 @@ class SMTPServer:
             files = []
             while True:
                 while True:
+                    files.clear()
                     client_msg = client_sock.recv(5)
                     if client_msg == b'CLOSE':
                         client_sock.send(b'-1')
                         continue
-                    num_files: int = int.from_bytes(client_msg, byteorder='big')
+
+                    files_list_length = int.from_bytes(client_msg, byteorder='big')
+                    print(files_list_length)
                     client_sock.send(b'ACK')
-                    for i in range(num_files):
-                        file_i_name = client_sock.recv(globals_module.FILE_NAME_LIMIT).decode()
-                        client_sock.send(b'ACK')
-                        file_i_ex = client_sock.recv(globals_module.FILE_EXTENSION_LIMIT).decode()
-                        client_sock.send(b'ACK')
-                        file_i_length = int.from_bytes(client_sock.recv(4), byteorder='big')
-                        client_sock.send(b'ACK')
-                        file_i = client_sock.recv(file_i_length)
-                        client_sock.send(b'ACK')
-                        files.append((file_i, file_i_ex, file_i_name))
-                    for tup in files:
-                        file = open(f'fileReceived/{tup[2]}.{tup[1]}', 'wb')
-                        file.write(tup[0])
-                        file.close()
+                    m = client_sock.recv(files_list_length)
+                    print(len(m))
+                    files_list: [File] = pickle.loads(m)
+                    client_sock.send(b'ACK')
+                    for f in files_list:
+                        print(f.name, f.extension, f.content)
+                        files.append((f.name, f.extension, f.content))
+
+                    # for tup in files:
+                    #     file = open(f'fileReceived/{tup[0]}.{tup[1]}', 'wb')
+                    #     file.write(tup[2])
+                    #     file.close()
 
                     pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
                     client_sock.send(b'ACK')
@@ -86,11 +88,17 @@ class SMTPServer:
 
                 print('RECEIVED', sentMail.recipients, sentMail.message, sentMail.subject, sentMail.creation_date,
                       sentMail.sender)
+                if files:
+                    files = SMTPServer._save_files(files)
+
                 for email in sentMail.recipients:
                     try:
-                        new_id: str = SMTPServer._send_email(sentMail)
+                        print("SENT:", files)
+                        new_id: str = SMTPServer._send_email(sentMail, files)
                         email_sock: socket.socket = self._client_dict[email]
                         sentMail.mongo_id = new_id
+                        sentMail.files_ids = files
+
                         email_sock.send(pickle.dumps(sentMail))
                         print("SENT BY SOCKET TO", email)
                     except KeyError:
@@ -120,7 +128,7 @@ class SMTPServer:
         self._sock.close()
 
     @staticmethod
-    def _send_email(mailToSend: Mail) -> str:
+    def _send_email(mailToSend: Mail, files) -> str:
         """
         Send an email to the database and return the ID.
 
@@ -133,7 +141,12 @@ class SMTPServer:
 
         db = DataBaseService()
         return db.store_email(mailToSend.sender, mailToSend.recipients, mailToSend.subject, mailToSend.message,
-                              mailToSend.creation_date)
+                              mailToSend.creation_date, files)
+
+    @staticmethod
+    def _save_files(files) -> list:
+        db = DataBaseService()
+        return db.save_files(files)
 
 
 if __name__ == "__main__":

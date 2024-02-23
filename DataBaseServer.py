@@ -1,7 +1,7 @@
 import base64
 import datetime
 
-import gridfs
+from gridfs import GridFS
 import pymongo
 from bson import ObjectId
 
@@ -36,7 +36,7 @@ class DataBaseService:
                                    "=true&w=majority&ssl=true")
         self._client = pymongo.MongoClient(self._connection_string)
         self._db = self._client["CyberProjectDB"]
-        self._fs = gridfs.GridFS(self._db)
+        self._fs = GridFS(self._db)
 
     def __del__(self):
         """
@@ -112,7 +112,7 @@ class DataBaseService:
         print("find one for", email, ansDICT)
         return ansDICT
 
-    def store_email(self, fromMail, toMails, subject, message, creation_date) -> str:
+    def store_email(self, fromMail, toMails, subject, message, creation_date, files) -> str:
         """
         Store an email in the database.
 
@@ -141,7 +141,8 @@ class DataBaseService:
             "creation_date": creation_date,
             "subject": subject,
             "sender": senderOBJ,
-            "recipients": toOBJ
+            "recipients": toOBJ,
+            "files": files
         }
 
         to_return = self._db["mails"].insert_one(new_item)
@@ -164,3 +165,30 @@ class DataBaseService:
         mail = self._db['mails'].find_one({'_id': ObjectId(email_id)}, {})
         return mail
 
+    def get_files_by_id(self, mail_id) -> list:
+        final_ans = []
+        mail = self._db['mails'].find_one({'_id': ObjectId(mail_id)}, {})
+        for file in mail["files"]:
+            current_file = self._fs.get(file)
+            final_ans.append((current_file.read(), current_file.filex, current_file.filename))
+
+        return final_ans
+
+    def get_file_name_ex_by_id(self, file_id) -> tuple:
+        if type(file_id) == str:
+            file_id = ObjectId(file_id)
+        f = self._fs.get(file_id)
+        return f.filename, f.filex
+
+    def get_file_content_by_id(self, file_id) -> bytes:
+        if type(file_id) == str:
+            file_id = ObjectId(file_id)
+        return self._fs.get(file_id).read()
+
+    def save_files(self, files) -> list:
+        final_ans = []
+        for tup in files:
+            file_i_id = self._fs.put(tup[2], filename=tup[0], filex=tup[1])
+            final_ans.append(file_i_id)
+
+        return final_ans
