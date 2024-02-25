@@ -519,9 +519,16 @@ class User:
 
     def saveMail(self, mail: Mail):
         file_to_save = tk.filedialog.asksaveasfile(defaultextension='.txt', filetypes=[("Text file", ".txt")])
+        files_names = "None"
+        print(mail.files_info)
+        if mail.files_info:
+            files_names = ",".join(f'{tup[1]}.{tup[2]}' for tup in mail.files_info)
         file_content = (
             f'Date:{mail.creation_date}\nFrom:{mail.sender}\nTo:{mail.recipients}\nSubject:{Base64.Decrypt(mail.subject)}\n'
-            f'Message:{Base64.Decrypt(mail.message)}')
+            f'Message:{Base64.Decrypt(mail.message)}\n'
+            f'Files:{files_names}')
+        if not file_to_save:
+            return
         file_to_save.write(file_content)
         file_to_save.close()
 
@@ -542,7 +549,19 @@ class User:
             selected_file.close()
             print("SAVED!!!!!")
 
+    def delete_mail(self, mail_obj):
+        self._pop3_socket.send(b'delete')
+        self._pop3_socket.recv(3)
+        mail_tup_dumps = pickle.dumps((mail_obj.mongo_id, mail_obj.sender))
+        self._pop3_socket.send(len(mail_tup_dumps).to_bytes(4, byteorder='big'))
+        self._pop3_socket.recv(3)
+        self._pop3_socket.send(mail_tup_dumps)
+        self._pop3_socket.recv(3)
+        messagebox.showinfo("Mail got deleted!")
+        self.open_mails_window()
+
     def open_single_mail_window(self, mail):
+        # TODO -> check the thing with having both a mail and a mail_received_obj objects.
         """
         Open the window for a single mail.
 
@@ -582,8 +601,12 @@ class User:
 
         # Create and pack the save button
         self._single_mail_save_button = tk.Button(self._single_mail_frame, text="Save email",
-                                                  command=lambda: self.saveMail(mail))
+                                                  command=lambda: self.saveMail(mail_received_obj))
         self._single_mail_save_button.pack(side=tk.BOTTOM, pady=10)
+
+        self._single_mail_delete_button = tk.Button(self._single_mail_frame, text="Delete email",
+                                                    command=lambda: self.delete_mail(mail_received_obj))
+        self._single_mail_delete_button.pack(side=tk.BOTTOM, pady=10)
 
         self._mails_frame.pack_forget()
         self._single_mail_frame.pack(fill='both', expand=1)
@@ -694,6 +717,7 @@ class User:
         """
         # Update the GUI to reflect the new mail
         # For example, adding a new label for the mail
+        print("STATE:", self._current_filter_state)
         if self._current_filter_state == "sent":
             return
         label = tk.Label(self._mails_frame,

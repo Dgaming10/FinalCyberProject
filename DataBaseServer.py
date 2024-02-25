@@ -72,7 +72,11 @@ class DataBaseService:
         ansList = []
         for ans in self._db['mails'].find({
             "sender.email": email,
-            'creation_date': {'$lte': datetime.datetime.now()}}, {}):
+            'creation_date': {'$lte': datetime.datetime.now()},
+            "deleted": {
+                "$nin": [email]
+            }
+        }, {}):
             ansList.append(ans)
         return ansList
 
@@ -92,6 +96,9 @@ class DataBaseService:
                 "$elemMatch": {
                     "email": email
                 }
+            },
+            "deleted": {
+                "$nin": [email]
             },
             'creation_date': {'$lte': datetime.datetime.now()}
         }, {}):
@@ -142,7 +149,8 @@ class DataBaseService:
             "subject": subject,
             "sender": senderOBJ,
             "recipients": toOBJ,
-            "files": files
+            "files": files,
+            "deleted": []
         }
 
         to_return = self._db["mails"].insert_one(new_item)
@@ -175,13 +183,13 @@ class DataBaseService:
         return final_ans
 
     def get_file_name_ex_by_id(self, file_id) -> tuple:
-        if type(file_id) == str:
+        if isinstance(file_id, str):
             file_id = ObjectId(file_id)
         f = self._fs.get(file_id)
         return f.filename, f.filex
 
     def get_file_content_by_id(self, file_id) -> bytes:
-        if type(file_id) == str:
+        if isinstance(file_id, str):
             file_id = ObjectId(file_id)
         return self._fs.get(file_id).read()
 
@@ -192,3 +200,18 @@ class DataBaseService:
             final_ans.append(file_i_id)
 
         return final_ans
+
+    def delete_mail(self, mail_tup):
+        mail_id = mail_tup[0]
+        if isinstance(mail_id, str):
+            mail_id = ObjectId(mail_id)
+        mail = self._db['mails'].find_one({'_id': mail_id}, {})
+        recipients_mails = [res_obj['email'] for res_obj in mail.get('recipients')]
+        deleted_mails = mail.get('deleted')
+        deleted_mails.append(mail_tup[1])
+        self._db['mails'].update_one({'_id': mail_id}, {'$push': {'deleted': mail_tup[1]}})
+        if len(deleted_mails) == len(recipients_mails) + 1:
+            files_ids = mail.get('files')
+            self._db['mails'].delete_one({'_id': mail_id})
+            for file_id in files_ids:
+                self._fs.delete(file_id)

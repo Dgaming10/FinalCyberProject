@@ -98,6 +98,14 @@ class POP3Server:
                     client_sock.send(len(file_content).to_bytes(4, byteorder='big'))
                     client_sock.recv(3)
                     client_sock.send(file_content)
+                elif cmd == 'delete':
+                    client_sock.send(b'ACK')
+                    mail_tup_length = int.from_bytes(client_sock.recv(4), byteorder='big')
+                    client_sock.send(b'ACK')
+                    mail_tup = pickle.loads(client_sock.recv(mail_tup_length))
+                    self._dbService.delete_mail(mail_tup)
+                    print("DELETE TUP:", mail_tup)
+                    client_sock.send(b'ACK')
                 else:
                     # Retrieve a single mail by its ID and send it to the client
                     # TODO -> send only the file names, no need for sending the whole Mail again
