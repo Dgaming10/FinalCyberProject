@@ -9,7 +9,6 @@ from tkinter import messagebox, ttk, filedialog
 
 from tkcalendar import DateEntry
 
-import DataBaseServer
 import globals_module
 from Base64 import Base64
 from File import File
@@ -85,8 +84,8 @@ class User:
 
         self._loginPage = tk.Frame(self.root)
         self._registerPage = tk.Frame(self.root)
-        self._mails_frame = tk.Frame(self.root)
-        self._single_mail_frame = tk.Frame(self.root)
+        self._emails_frame = tk.Frame(self.root)
+        self._single_email_frame = tk.Frame(self.root)
         self._send_email_frame = tk.Frame(self.root)
 
         self._registration_label_register = None
@@ -108,34 +107,37 @@ class User:
         self._password_entry = None
         self._login_button = None
         self._register_button = None
-        self._send_mail_recipients_label = None
-        self._send_mail_recipients_entry = None
-        self._send_mail_subject_label = None
-        self._send_mail_subject_entry = None
-        self._send_mail_message_label = None
-        self._send_mail_message_text = None
-        self._send_mail_send_button = None
-        self._send_mail_back_button = None
-        self._mails_top_label = None
+        self._send_email_recipients_label = None
+        self._send_email_recipients_entry = None
+        self._send_email_subject_label = None
+        self._send_email_subject_entry = None
+        self._send_email_message_label = None
+        self._send_email_message_text = None
+        self._send_email_send_button = None
+        self._send_email_back_button = None
+        self._emails_top_label = None
         self._login_register_button = None
-        self._send_mail_scheduled_label = None
-        self._send_mail_scheduled_date = None
+        self._send_email_scheduled_label = None
+        self._send_email_scheduled_date = None
         self._send_email_scheduled_hour = None
         self._send_email_scheduled_check_btn = None
         self._send_email_scheduled_minute = None
         self._send_email_scheduled_hour_label = None
         self._send_email_scheduled_minute_label = None
+        self._send_email_open_file_button = None
+        self._single_email_save_button = None
+        self._single_email_delete_button = None
 
         self._transition_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._pop3_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._pop3_socket = None
         self._is_scheduled_btn = tk.IntVar()
         self._receive_thread: threading.Thread = None
         self._run_receive_thread = True
 
-        self._mails_top_label = tk.Label(self._mails_frame, text="MUN MAILS")
-        self._mails_top_label.pack(side='top', pady=5)
+        self._emails_top_label = tk.Label(self._emails_frame, text="MUN MAILS")
+        self._emails_top_label.pack(side='top', pady=5)
 
-        self._side_menu_frame = tk.Frame(self._mails_frame, bg="#f0f0f0")  # Add this line
+        self._side_menu_frame = tk.Frame(self._emails_frame, bg="#f0f0f0")  # Add this line
 
         self._current_filter_state = "recv"
 
@@ -152,7 +154,8 @@ class User:
         self._loginPage.pack(fill="both", expand=1)
         self.root.mainloop()
 
-    def is_valid_password(self, password) -> bool:
+    @staticmethod
+    def is_valid_password(password) -> bool:
         """
         Check if a password is valid.
 
@@ -165,7 +168,8 @@ class User:
         password_pattern = r"^[a-zA-Z0-9\-_\.!@#$%]{11,16}$"
         return re.match(password_pattern, password) is not None
 
-    def is_valid_username(self, username) -> bool:
+    @staticmethod
+    def is_valid_username(username) -> bool:
         """
         Check if a username is valid.
 
@@ -178,7 +182,8 @@ class User:
         username_pattern = r"^[a-zA-Z0-9\-_\.]{5,16}$"
         return re.match(username_pattern, username) is not None
 
-    def is_valid_email(self, email) -> bool:
+    @staticmethod
+    def is_valid_email(email) -> bool:
         """
         Check if an email is valid.
 
@@ -188,7 +193,7 @@ class User:
         Returns:
         bool: True if the email is valid, False otherwise.
         """
-        return email.endswith('@mun.com') and self.is_valid_username(email[:email.rfind('@')])
+        return email.endswith('@mun.com') and User.is_valid_username(email[:email.rfind('@')])
 
     def login_page(self):
         """
@@ -227,14 +232,25 @@ class User:
         - password (str): The user's password.
         """
         # Add your login logic here
-        if self.is_valid_email(email) and self.is_valid_password(password):
+        if User.is_valid_email(email) and User.is_valid_password(password):
+            self._pop3_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._pop3_socket.connect((POP3_SERVER_IP, POP3_SERVER_PORT))
+            self._pop3_socket.send(email.encode())
+            self._pop3_socket.recv(3)
             messagebox.showinfo("Login", f"Logged in with email: {email}")
-            db = DataBaseServer.DataBaseService()
-            user_dict = db.authenticate_user(email, password)
-            del db
+            self._pop3_socket.send(b'login')
+            self._pop3_socket.recv(3)
+            login_tuple_pickle = b'abcd' + pickle.dumps((Base64.Encrypt(email), Base64.Encrypt(password)))
+            self._pop3_socket.send(len(login_tuple_pickle).to_bytes(4, byteorder='big'))
+            self._pop3_socket.recv(3)
+            self._pop3_socket.send(login_tuple_pickle)
+            len_dict = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
+            self._pop3_socket.send(b'ACK')
+            user_dict = pickle.loads(self._pop3_socket.recv(len_dict)[4:])
             print(user_dict)
             if len(user_dict.keys()) == 0:
                 messagebox.showerror("Login failed!", "Please try again")
+                self._pop3_socket.close()
             else:
                 messagebox.showinfo("Successful login!", f"Hey {user_dict['first_name']}! Welcome to MailUN")
                 self._transition_socket.connect((SMTP_SERVER_IP, SMTP_SERVER_PORT))
@@ -245,12 +261,8 @@ class User:
                 self._first_name = user_dict['first_name']
                 self._last_name = user_dict['last_name']
                 self._email = user_dict['email']
-                self._pop3_socket.connect((POP3_SERVER_IP, POP3_SERVER_PORT))
-                self._pop3_socket.send(self._email.encode())
                 self._transition_socket.send(self._email.encode())
-                while self._pop3_socket.recv(1024).decode() != 'ACK':
-                    self._pop3_socket.send(self._email.encode())
-                self.open_mails_window(None)
+                self.open_emails_window(None)
         else:
             messagebox.showerror("Error", "Invalid email or password format")
 
@@ -258,6 +270,7 @@ class User:
         """
         Handle the registration process.
         """
+        # TODO - add register function
         email = self._email_entry.get()
         password = self._password_entry.get()
 
@@ -330,7 +343,7 @@ class User:
                                                   filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
         self._files_list = filename
 
-    def open_send_mail_window(self):
+    def open_send_email_window(self):
         """
         Open the window for sending emails.
         """
@@ -339,36 +352,36 @@ class User:
         self._receive_thread.join()
         self._receive_thread = None
 
-        self._mails_frame.pack_forget()
+        self._emails_frame.pack_forget()
         for widget in self._send_email_frame.winfo_children():
             widget.destroy()
         # Recipients
-        self._send_mail_recipients_label = tk.Label(self._send_email_frame, text="Recipients:")
-        self._send_mail_recipients_label.pack()
+        self._send_email_recipients_label = tk.Label(self._send_email_frame, text="Recipients:")
+        self._send_email_recipients_label.pack()
 
-        self._send_mail_recipients_entry = tk.Entry(self._send_email_frame)
-        self._send_mail_recipients_entry.pack(fill="x")
+        self._send_email_recipients_entry = tk.Entry(self._send_email_frame)
+        self._send_email_recipients_entry.pack(fill="x")
 
         # Subject
-        self._send_mail_subject_label = tk.Label(self._send_email_frame, text="Subject:")
-        self._send_mail_subject_label.pack()
+        self._send_email_subject_label = tk.Label(self._send_email_frame, text="Subject:")
+        self._send_email_subject_label.pack()
 
-        self._send_mail_subject_entry = tk.Entry(self._send_email_frame)
-        self._send_mail_subject_entry.pack(fill="x")
+        self._send_email_subject_entry = tk.Entry(self._send_email_frame)
+        self._send_email_subject_entry.pack(fill="x")
 
         # Message
-        self._send_mail_message_label = tk.Label(self._send_email_frame, text="Message:")
-        self._send_mail_message_label.pack()
+        self._send_email_message_label = tk.Label(self._send_email_frame, text="Message:")
+        self._send_email_message_label.pack()
 
-        self._send_mail_message_text = tk.Text(self._send_email_frame, height=10, width=40)
-        self._send_mail_message_text.pack()
+        self._send_email_message_text = tk.Text(self._send_email_frame, height=10, width=40)
+        self._send_email_message_text.pack()
 
-        self._send_mail_scheduled_label = tk.Label(self._send_email_frame, text="Message:")
-        self._send_mail_scheduled_label.pack()
+        self._send_email_scheduled_label = tk.Label(self._send_email_frame, text="Message:")
+        self._send_email_scheduled_label.pack()
 
-        self._send_mail_scheduled_date = DateEntry(self._send_email_frame, width=12, background='darkblue',
-                                                   foreground='white', borderwidth=2)
-        self._send_mail_scheduled_date.pack(pady=10)
+        self._send_email_scheduled_date = DateEntry(self._send_email_frame, width=12, background='darkblue',
+                                                    foreground='white', borderwidth=2)
+        self._send_email_scheduled_date.pack(pady=10)
 
         self._send_email_scheduled_hour = ttk.Spinbox(
             self._send_email_frame,
@@ -401,15 +414,16 @@ class User:
             onvalue=True, offvalue=False)
         self._send_email_scheduled_check_btn.place(relx=0.3, rely=0.8, anchor=tk.CENTER)
 
-        self._send_mail_send_button = tk.Button(self._send_email_frame, text="Send", command=self.send_email)
-        self._send_mail_send_button.pack()
+        self._send_email_send_button = tk.Button(self._send_email_frame, text="Send", command=self.send_email)
+        self._send_email_send_button.pack()
 
-        self._send_mail_open_file_button = tk.Button(self._send_email_frame, text="Choose files"
-                                                     , command=self.select_files)
-        self._send_mail_open_file_button.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
+        self._send_email_open_file_button = tk.Button(self._send_email_frame, text="Choose files",
+                                                      command=self.select_files)
+        self._send_email_open_file_button.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
 
-        self._send_mail_back_button = tk.Button(self._send_email_frame, text="Go Back", command=self.open_mails_window)
-        self._send_mail_back_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
+        self._send_email_back_button = tk.Button(self._send_email_frame, text="Go Back",
+                                                 command=self.open_emails_window)
+        self._send_email_back_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
 
         self._send_email_frame.pack(fill='both', expand=1)
 
@@ -421,15 +435,15 @@ class User:
         bool: True if the input is valid, False otherwise.
         """
         hour = self._send_email_scheduled_hour.get()
-        min = self._send_email_scheduled_minute.get()
-        if self._send_mail_recipients_entry.get() == '':
+        minutes = self._send_email_scheduled_minute.get()
+        if self._send_email_recipients_entry.get() == '':
             messagebox.showerror("Error", "Please enter a one or more recipient")
             return False
         elif self._is_scheduled_btn.get() == 1:
             try:
                 int(hour)
-                int(min)
-                if not (0 <= int(hour) < 24 and 0 <= int(min) < 60):
+                int(minutes)
+                if not (0 <= int(hour) < 24 and 0 <= int(minutes) < 60):
                     int("saf")
             except ValueError:
                 messagebox.showerror("Error", "Please enter a valid time")
@@ -447,7 +461,7 @@ class User:
 
         if validation_ans is False:
             return
-        emails: str = self._send_mail_recipients_entry.get()
+        emails: str = self._send_email_recipients_entry.get()
         realEmails = [Base64.Encrypt(i) for i in emails.split(',') if i != ""]
         # TODO: check if only set(realEmails) will have a different impact
         realEmails = list(set(realEmails))
@@ -455,19 +469,22 @@ class User:
         # db = DataBaseServer.DataBaseService()
         # recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
         if self._is_scheduled_btn.get() == 1:
-            new_datetime = datetime.datetime(year=self._send_mail_scheduled_date.get_date().year,
-                                             month=self._send_mail_scheduled_date.get_date().month,
-                                             day=self._send_mail_scheduled_date.get_date().day,
+            new_datetime = datetime.datetime(year=self._send_email_scheduled_date.get_date().year,
+                                             month=self._send_email_scheduled_date.get_date().month,
+                                             day=self._send_email_scheduled_date.get_date().day,
                                              hour=int(self._send_email_scheduled_hour.get()),
                                              minute=int(self._send_email_scheduled_minute.get()))
             sendEmail: Mail = Mail(Base64.Encrypt(self._email), realEmails,
-                                   Base64.Encrypt(self._send_mail_subject_entry.get()),
-                                   Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')),
+                                   Base64.Encrypt(self._send_email_subject_entry.get()),
+                                   Base64.Encrypt(self._send_email_message_text.get("1.0", 'end-1c')),
                                    new_datetime)
         else:
             sendEmail: Mail = Mail(Base64.Encrypt(self._email), realEmails,
-                                   Base64.Encrypt(self._send_mail_subject_entry.get()),
-                                   Base64.Encrypt(self._send_mail_message_text.get("1.0", 'end-1c')))
+                                   Base64.Encrypt(self._send_email_subject_entry.get()),
+                                   Base64.Encrypt(self._send_email_message_text.get("1.0", 'end-1c')), )
+
+        if self._is_scheduled_btn.get() != 1:
+            sendEmail.update_creation_date()
 
         sendEmail_dumps = pickle.dumps(sendEmail)
         file_object_list = []
@@ -484,10 +501,11 @@ class User:
             current_file_content = current_file.read()
             current_file.close()
 
-            file_object_list.append(File(file_path_name, file_path_ex, current_file_content))
+            file_object_list.append(File(Base64.Encrypt(file_path_name), Base64.Encrypt(file_path_ex),
+                                         current_file_content))
 
         print(file_object_list)
-        files_list_dumps = pickle.dumps(file_object_list)
+        files_list_dumps = b'abcd' + pickle.dumps(file_object_list)
         self._transition_socket.send(len(files_list_dumps).to_bytes(4, byteorder='big'))
         self._transition_socket.recv(3)
         self._transition_socket.send(files_list_dumps)
@@ -501,14 +519,14 @@ class User:
         print("EMAIL SENT!")
 
         # anti spam
-        self._send_mail_send_button.configure(state='disabled')
+        self._send_email_send_button.configure(state='disabled')
         self._send_email_frame.after(2000, self.enable_send_button)
 
     def enable_send_button(self):
         """
         Enable the send email button after a delay.
         """
-        self._send_mail_send_button.configure(state='normal')
+        self._send_email_send_button.configure(state='normal')
 
     def open_register_page(self):
         """
@@ -517,15 +535,17 @@ class User:
         self._registerPage.pack(fill='both', expand=1)
         self._loginPage.forget()
 
-    def saveMail(self, mail: Mail):
+    @staticmethod
+    def saveEmail(email: Mail):
         file_to_save = tk.filedialog.asksaveasfile(defaultextension='.txt', filetypes=[("Text file", ".txt")])
         files_names = "None"
-        print(mail.files_info)
-        if mail.files_info:
-            files_names = ",".join(f'{tup[1]}.{tup[2]}' for tup in mail.files_info)
+        print(email.files_info)
+        if email.files_info:
+            files_names = ",".join(f'{tup[1]}.{tup[2]}' for tup in email.files_info)
         file_content = (
-            f'Date:{mail.creation_date}\nFrom:{mail.sender}\nTo:{mail.recipients}\nSubject:{Base64.Decrypt(mail.subject)}\n'
-            f'Message:{Base64.Decrypt(mail.message)}\n'
+            f'Date:{email.creation_date}\nFrom:{email.sender}\nTo:{email.recipients}\n'
+            f'Subject:{Base64.Decrypt(email.subject)}\n'
+            f'Message:{Base64.Decrypt(email.message)}\n'
             f'Files:{files_names}')
         if not file_to_save:
             return
@@ -549,18 +569,18 @@ class User:
             selected_file.close()
             print("SAVED!!!!!")
 
-    def delete_mail(self, mail_obj):
+    def delete_email(self, email_obj):
         self._pop3_socket.send(b'delete')
         self._pop3_socket.recv(3)
-        mail_tup_dumps = pickle.dumps((mail_obj.mongo_id, mail_obj.sender))
-        self._pop3_socket.send(len(mail_tup_dumps).to_bytes(4, byteorder='big'))
+        email_tup_dumps = pickle.dumps((email_obj.mongo_id, email_obj.sender))
+        self._pop3_socket.send(len(email_tup_dumps).to_bytes(4, byteorder='big'))
         self._pop3_socket.recv(3)
-        self._pop3_socket.send(mail_tup_dumps)
+        self._pop3_socket.send(email_tup_dumps)
         self._pop3_socket.recv(3)
         messagebox.showinfo("Mail got deleted!")
-        self.open_mails_window()
+        self.open_emails_window()
 
-    def open_single_mail_window(self, mail):
+    def open_single_email_window(self, email):
         # TODO -> check the thing with having both a mail and a mail_received_obj objects.
         """
         Open the window for a single mail.
@@ -568,50 +588,49 @@ class User:
         Parameters:
         - mail: The mail object.
         """
-        for widget in self._single_mail_frame.winfo_children():
+        for widget in self._single_email_frame.winfo_children():
             widget.destroy()
         # change to set mail from DB, use Mail class
-        self._pop3_socket.send(str(mail.mongo_id).encode())
-        mail_received_obj_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
+        self._pop3_socket.send(str(email.mongo_id).encode())
+        email_received_obj_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
         self._pop3_socket.send(b'ACK')
-        mail_received_obj: Mail = pickle.loads(self._pop3_socket.recv(mail_received_obj_length))
-        single_mail_frame_label = tk.Label(self._single_mail_frame, text=Base64.Decrypt(mail_received_obj.message),
-                                           bg="lightgray",
-                                           relief="raised")
+        email_received_obj: Mail = pickle.loads(self._pop3_socket.recv(email_received_obj_length))
+        single_email_frame_label = tk.Label(self._single_email_frame, text=Base64.Decrypt(email_received_obj.message),
+                                            bg="lightgray",
+                                            relief="raised")
 
-        single_mail_frame_label.pack(fill=tk.X)
-        single_mail_frame_label.bind("<Button-1>", self.open_mails_window)
+        single_email_frame_label.pack(fill=tk.X)
+        single_email_frame_label.bind("<Button-1>", self.open_emails_window)
 
-        elements_list = [f'{tup[1]}.{tup[2]}' for tup in mail_received_obj.files_info]
-        print(mail_received_obj.files_info)
-        # Calculate the number of rows and columns based on the number of elements
-        rows = len(elements_list) // 2 + 1  # Assuming 2 columns, adjust as needed
+        elements_list = [f'{tup[1]}.{tup[2]}' for tup in email_received_obj.files_info]
+        print(email_received_obj.files_info)
+
         cols = 2
 
-        grid_frame = tk.Frame(self._single_mail_frame)
+        grid_frame = tk.Frame(self._single_email_frame)
         grid_frame.pack(fill='both', expand=1)
 
         # Create buttons and place them in a grid
         for i, element in enumerate(elements_list):
-            print("CURRNET ENUM:", i, element)
+            print("current enum:", i, element)
             button = tk.Button(grid_frame, text=element,
-                               command=lambda index=i: self.save_file(mail_received_obj.files_info[index]))
+                               command=lambda index=i: self.save_file(email_received_obj.files_info[index]))
             row, col = divmod(i, cols)
             button.grid(row=row, column=col, padx=5, pady=5)
 
         # Create and pack the save button
-        self._single_mail_save_button = tk.Button(self._single_mail_frame, text="Save email",
-                                                  command=lambda: self.saveMail(mail_received_obj))
-        self._single_mail_save_button.pack(side=tk.BOTTOM, pady=10)
+        self._single_email_save_button = tk.Button(self._single_email_frame, text="Save email",
+                                                   command=lambda: User.saveEmail(email_received_obj))
+        self._single_email_save_button.pack(side=tk.BOTTOM, pady=10)
 
-        self._single_mail_delete_button = tk.Button(self._single_mail_frame, text="Delete email",
-                                                    command=lambda: self.delete_mail(mail_received_obj))
-        self._single_mail_delete_button.pack(side=tk.BOTTOM, pady=10)
+        self._single_email_delete_button = tk.Button(self._single_email_frame, text="Delete email",
+                                                     command=lambda: self.delete_email(email_received_obj))
+        self._single_email_delete_button.pack(side=tk.BOTTOM, pady=10)
 
-        self._mails_frame.pack_forget()
-        self._single_mail_frame.pack(fill='both', expand=1)
+        self._emails_frame.pack_forget()
+        self._single_email_frame.pack(fill='both', expand=1)
 
-    def open_mails_window(self, e=None):
+    def open_emails_window(self, e=None):
         """
         Open the window for displaying mails.
 
@@ -619,17 +638,17 @@ class User:
         - e: An optional event parameter.
         """
         if self._receive_thread is None:
-            self._receive_thread = threading.Thread(target=self.receive_mails)
+            self._receive_thread = threading.Thread(target=self.receive_emails)
             self._receive_thread.start()
             self._run_receive_thread = True
             print('thread created')
 
         print('current:', self._current_filter_state)
-        for widget in self._mails_frame.winfo_children():
+        for widget in self._emails_frame.winfo_children():
             widget.destroy()
 
-        def _load_mails(filter_type) -> [Mail]:
-            for inner_widget in self._mails_frame.winfo_children():
+        def _load_emails(filter_type) -> [Mail]:
+            for inner_widget in self._emails_frame.winfo_children():
                 if inner_widget.winfo_class() == 'Label':
                     inner_widget.destroy()
 
@@ -643,44 +662,44 @@ class User:
             self._pop3_socket.send(b'ACK')
             data_received = self._pop3_socket.recv(int(len_to_receive))
             print(data_received, len(data_received))
-            mails: [Mail] = pickle.loads(data_received)
-            print("THIS IS: ", mails)
-            labels = [f"{mail.sender} -> {Base64.Decrypt(mail.subject)} | {mail.creation_date}"
-                      for mail in mails]
+            emails: [Mail] = pickle.loads(data_received)
+            print("THIS IS: ", emails)
+            labels = [f"{email.sender} -> {Base64.Decrypt(email.subject)} | {email.creation_date}"
+                      for email in emails]
 
-            for label_text, mail in zip(labels, mails):
-                label = tk.Label(self._mails_frame, text=label_text, bg="lightgray",
+            for label_text, email in zip(labels, emails):
+                label = tk.Label(self._emails_frame, text=label_text, bg="lightgray",
                                  relief="raised", cursor="hand2")
-                label.bind("<Button-1>", lambda event, mail2=mail: self.open_single_mail_window(mail2))
+                label.bind("<Button-1>", lambda event, email2=email: self.open_single_email_window(email2))
                 label.pack(fill=tk.X)
-            self._mails_frame.pack(fill='both', expand=1)
+            self._emails_frame.pack(fill='both', expand=1)
             self._current_filter_state = filter_type
 
-        self._side_menu_frame = tk.Frame(self._mails_frame, bg="#f0f0f0")
+        self._side_menu_frame = tk.Frame(self._emails_frame, bg="#f0f0f0")
         # Packing the side menu frame
         self._side_menu_frame.pack(side='right', fill='y', padx=10, pady=10)
 
         # Received button
         received_button = tk.Button(self._side_menu_frame, text="Received",
-                                    command=lambda: _load_mails('recv'))
+                                    command=lambda: _load_emails('recv'))
         received_button.pack(fill='x', pady=5)
 
         # Sent button
         sent_button = tk.Button(self._side_menu_frame, text="Sent",
-                                command=lambda: _load_mails('sent'))
+                                command=lambda: _load_emails('sent'))
         sent_button.pack(fill='x', pady=5)
 
         # Send mail button (assuming you want it inside the mails frame)
-        send_mail_button = tk.Button(self._mails_frame, text="Send Mail",
-                                     command=self.open_send_mail_window)
-        send_mail_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
+        send_email_button = tk.Button(self._emails_frame, text="Send Mail",
+                                      command=self.open_send_email_window)
+        send_email_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
 
         # Pack the main mails frame
 
-        self._single_mail_frame.pack_forget()
+        self._single_email_frame.pack_forget()
         self._send_email_frame.pack_forget()
 
-        _load_mails(self._current_filter_state)
+        _load_emails(self._current_filter_state)
 
         # Implement or add placeholders for these methods
 
@@ -691,7 +710,7 @@ class User:
         # Start the GUI event loop
         self.root.mainloop()
 
-    def receive_mails(self):
+    def receive_emails(self):
         """
         Receive mails in a separate thread.
         """
@@ -702,13 +721,13 @@ class User:
             if code == b'-1':
                 break
             print("CODE IS: ", code)
-            mailReceived: Mail = pickle.loads(code)
-            print("RECEIVED", mailReceived, mailReceived.recipients, mailReceived.sender)
+            emailReceived: Mail = pickle.loads(code)
+            print("RECEIVED", emailReceived, emailReceived.recipients, emailReceived.sender)
             print("IM", self._email)
-            self.root.after(0, lambda: self.update_gui_with_new_mail(mailReceived))
+            self.root.after(0, lambda: self.update_gui_with_new_email(emailReceived))
         print('bye')
 
-    def update_gui_with_new_mail(self, mail):
+    def update_gui_with_new_email(self, email):
         """
         Update the GUI with a new mail.
 
@@ -718,14 +737,16 @@ class User:
         # Update the GUI to reflect the new mail
         # For example, adding a new label for the mail
         print("STATE:", self._current_filter_state)
-        if self._current_filter_state == "sent":
+        if datetime.datetime.now() < email.creation_date or self._current_filter_state == "sent":
             return
-        label = tk.Label(self._mails_frame,
-                         text=f"{mail.sender} -> {Base64.Decrypt(mail.subject)} | {mail.creation_date}", bg="lightgray",
+
+        label = tk.Label(self._emails_frame,
+                         text=f"{email.sender} -> {Base64.Decrypt(email.subject)} | {email.creation_date}",
+                         bg="lightgray",
                          relief="raised",
                          cursor="hand2")
 
-        label.bind("<Button-1>", lambda event, mail2=mail: self.open_single_mail_window(mail2))
+        label.bind("<Button-1>", lambda event, email2=email: self.open_single_email_window(email2))
         label.pack(fill=tk.X)
 
 

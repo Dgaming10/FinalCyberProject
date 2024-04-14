@@ -1,7 +1,6 @@
 import pickle
 import socket
 import threading
-import globals_module
 
 from Base64 import Base64
 from DataBaseServer import DataBaseService
@@ -64,11 +63,16 @@ class SMTPServer:
                     client_sock.send(b'ACK')
                     m = client_sock.recv(files_list_length)
                     print(len(m))
-                    files_list: [File] = pickle.loads(m)
+                    try:
+                        files_list: [File] = pickle.loads(m[4:])
+                    except pickle.UnpicklingError:
+                        # TODO - add error handling
+                        print("M:", m)
+
                     client_sock.send(b'ACK')
                     for f in files_list:
-                        print(f.name, f.extension, f.content)
-                        files.append((f.name, f.extension, f.content))
+                        #print(f.name, f.extension, f.content)
+                        files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content))
 
                     # for tup in files:
                     #     file = open(f'fileReceived/{tup[0]}.{tup[1]}', 'wb')

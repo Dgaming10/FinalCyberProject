@@ -22,8 +22,8 @@ class Mail:
     - mongo_id (str): Get or set the MongoDB ID for the email.
     """
 
-    def __init__(self, sender, recipients, subject, message, creation_date=datetime.datetime.now(), mongo_id=None
-                 , files_info=None):
+    def __init__(self, sender, recipients, subject, message, creation_date=None, mongo_id=None,
+                 files_info=None):
         """
         Initialize an email instance.
 
@@ -120,3 +120,6 @@ class Mail:
     @files_info.setter
     def files_info(self, value):
         self._files_info = value
+
+    def update_creation_date(self):
+        self._creation_date = datetime.datetime.now()

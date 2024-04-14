@@ -1,11 +1,11 @@
-import datetime
+import pickle
 import socket
 import threading
-from DataBaseServer import DataBaseService
-import pickle
 
-from Mail import Mail
 import globals_module
+from Base64 import Base64
+from DataBaseServer import DataBaseService
+from Mail import Mail
 
 # Constants for POP3 server configuration
 POP3_SERVER_IP = '192.168.0.181'
@@ -106,6 +106,19 @@ class POP3Server:
                     self._dbService.delete_mail(mail_tup)
                     print("DELETE TUP:", mail_tup)
                     client_sock.send(b'ACK')
+                elif cmd == 'login':
+                    client_sock.send(b'ACK')
+                    len_tuple = int.from_bytes(client_sock.recv(4), byteorder='big')
+                    client_sock.send(b'ACK')
+                    client_tuple = pickle.loads(client_sock.recv(len_tuple)[4:])
+                    client_dict_ans = self._dbService.authenticate_user(Base64.Decrypt(client_tuple[0]),
+                                                                        Base64.Decrypt(client_tuple[1]))
+                    client_dict_pickle = b'abcd' + pickle.dumps(client_dict_ans)
+                    client_sock.send(len(client_dict_pickle).to_bytes(4, byteorder='big'))
+                    client_sock.recv(3)
+                    client_sock.send(client_dict_pickle)
+                    if client_dict_ans == {}:
+                        break
                 else:
                     # Retrieve a single mail by its ID and send it to the client
                     # TODO -> send only the file names, no need for sending the whole Mail again
@@ -145,7 +158,7 @@ class POP3Server:
                 # Check if client_email is a valid email address
                 if len(client_email) > 0 and '@' in client_email:
                     # Send acknowledgment to the client
-                    client_sock.send(b'ACK')
+                    client_sock.send(b'ack')
                     # Create a new thread to handle the client
                     threading.Thread(target=self.handle_client, args=(client_email, client_sock,)).start()
         except KeyboardInterrupt:
