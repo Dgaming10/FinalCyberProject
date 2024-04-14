@@ -1,56 +1,9 @@
-import tkinter as tk
-import time
+import pymongo
+from bson import ObjectId
+from gridfs import GridFS
 
-import pyotp
-import Base64
-
-
-def on_label_click(event):
-    label = event.widget.cget("text")
-    print(f"Clicked label: {label}")
-
-
-def openNewWindow(e):
-    # Clear existing labels in newFrame
-    for widget in newFrame.winfo_children():
-        widget.destroy()
-
-    labelNew = tk.Label(newFrame, text=e.widget.cget("text"), bg="lightgray", relief="raised")
-    labelNew.pack(fill=tk.X)
-    labelNew.bind("<Button-1>", showMain)
-    label_frame.pack_forget()
-    newFrame.pack(fill='both', expand=1)
-
-
-def showMain(e):
-    label_frame.pack(fill='both', expand=1)
-    newFrame.pack_forget()
-
-
-root = tk.Tk()
-root.title("Clickable Labels")
-root.geometry("500x500")
-
-label_frame = tk.Frame(root)
-newFrame = tk.Frame(root)
-showMain(None)
-
-# Create clickable labels and pack them on top of each other
-labels = ["Label 1", "Label 2", "Label 3", "Label 4", "Label 5"]
-for label_text in labels:
-    label = tk.Label(label_frame, text=label_text, bg="lightgray", relief="raised", cursor="hand2")
-    label.bind("<Button-1>", openNewWindow)
-    label.pack(fill=tk.X)
-
-# root.mainloop()
-def print_stuff():
-    with open("C:\\Users\\danny\\PycharmProjects\\FinalCyberProject\\newFile.jpg",'rb') as p:
-        print(len(p.read()))
-print(Base64.Base64.Decrypt("YWJudmM="))
-totp = pyotp.TOTP('base32secret3232')
-totp.now() # => 492039
-
-# OTP verified for current time
-totp.verify(492039) # => True
-time.sleep(30)
-totp.verify(492039) # => False
+connection_string = ("mongodb+srv://root:qazpoi12345@cyberprojectdb.5cnsgy6.mongodb.net/?retryWrites"
+                                   "=true&w=majority&ssl=true")
+client = pymongo.MongoClient(connection_string)
+db = client["CyberProjectDB"]
+print(db["mails"].find_one({'_id': ObjectId('65da2ff97be6e9f10a41b0a8')}, {}).get("recipients")[0]["email"])
