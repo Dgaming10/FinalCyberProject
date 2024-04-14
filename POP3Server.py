@@ -170,6 +170,6 @@ class POP3Server:
 
 # Entry point of the script
 if __name__ == "__main__":
-    # Create and run the POP3 server
+
     server = POP3Server()
     server.run()
