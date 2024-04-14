@@ -71,7 +71,7 @@ class SMTPServer:
 
                     client_sock.send(b'ACK')
                     for f in files_list:
-                        #print(f.name, f.extension, f.content)
+
                         files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content))
 
                     # for tup in files:
