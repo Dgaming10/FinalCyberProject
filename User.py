@@ -53,16 +53,16 @@ class User:
     - register_page: Display the registration page.
     - open_loginPage: Open the login page.
     - select_file: Open a file dialog to select a file.
-    - open_send_mail_window: Open the window for sending emails.
+    - open_send_email_window: Open the window for sending emails.
     - validate_before_send: Validate input before sending an email.
     - send_email: Send an email.
     - enable_send_button: Enable the send email button after a delay.
     - open_register_page: Open the registration page.
-    - open_single_mail_window: Open the window for a single mail.
-    - open_mails_window: Open the window for displaying mails.
+    - open_single_email_window: Open the window for a single email.
+    - open_emails_window: Open the window for displaying emails.
     - run: Start the GUI event loop.
-    - receive_mails: Receive mails in a separate thread.
-    - update_gui_with_new_mail: Update the GUI with a new mail.
+    - receive_emails: Receive emails in a separate thread.
+    - update_gui_with_new_email: Update the GUI with a new email.
     """
 
     def __init__(self):
