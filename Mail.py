@@ -32,7 +32,7 @@ class Mail:
         - recipients (list): List of recipient email addresses.
         - subject (str): Email subject.
         - message (str): Email message.
-        - creation_date (datetime.date): Email creation date (default is the current date and time).
+        - creation_date (datetime.date): Email creation date.
         - mongo_id (str): MongoDB ID for the email (default is None).
         """
         self._sender = sender
