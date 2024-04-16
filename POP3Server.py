@@ -143,9 +143,8 @@ class POP3Server:
                     client_sock.send(len(mongo_email_dump).to_bytes(4, byteorder='big'))
                     client_sock.recv(3)
                     client_sock.send(mongo_email_dump)
-        except socket.error as e:
-            print("Socket Error:", e)
-        finally:
+        except (socket.error, pickle.PickleError) as e:
+            print("-------------------------------------------Error in pop3 server:-----------------------------", e)
             client_sock.close()
 
     def run(self):
@@ -163,6 +162,7 @@ class POP3Server:
                 client_sock, addr = self._socket.accept()
                 # Receive client's email
                 client_email = client_sock.recv(1024).decode()
+                print('new connection from:',client_email)
                 # Check if client_email is a valid email address
                 client_sock.send(b'ACK')
                 # Create a new thread to handle the client

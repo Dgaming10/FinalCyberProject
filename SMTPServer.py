@@ -76,18 +76,18 @@ class SMTPServer:
 
                 files_list: [File] = pickle.loads(m[4:])
                 client_sock.send(b'ACK')
+                print('sent second ack')
                 for f in files_list:
                     files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content[::-1]))
 
                 pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
+                print('pickle_mail_len', pickle_mail_len)
+                client_sock.send(b'ACK')
+                sentMail: Email = pickle.loads(client_sock.recv(pickle_mail_len))
                 client_sock.send(b'ACK')
                 print('sent an ack for this shit')
-                sentMail: Email = pickle.loads(client_sock.recv(pickle_mail_len))
-                #TODO - maybe dont create from constructor
+
                 print('id of sent email:', id(sentMail))
-                sentMail = Email(sentMail.sender, [i for i in sentMail.recipients],
-                                 sentMail.subject, sentMail.message,
-                                 sentMail.creation_date)
 
                 print('RECEIVED', sentMail.recipients, sentMail.message, sentMail.subject, sentMail.creation_date,
                       sentMail.sender)
@@ -111,7 +111,8 @@ class SMTPServer:
                     except KeyError:
                         print(email, 'not found / connected at the moment')
 
-        except socket.error:
+        except (socket.error, pickle.PickleError) as e:
+            print('----------------------SMTP error--------------------------', e)
             if email_addr is not None:
                 self._client_dict.pop(email_addr)
                 self._is_client_available.pop(email_addr)
@@ -124,7 +125,6 @@ class SMTPServer:
         """
         self._sock.bind((SMTP_SERVER_IP, self._port))
         self._sock.listen()
-        self._sock = self._sock
         print('server is up')
         while True:
             client_sock, client_address = self._sock.accept()
