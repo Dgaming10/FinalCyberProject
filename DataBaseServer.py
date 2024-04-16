@@ -55,7 +55,7 @@ class DataBaseService:
         Returns:
         dict: User information if authentication is successful, an empty dictionary otherwise.
         """
-        user = self._db['users'].find_one({"email": email, "password": password.encode().decode()})
+        user = self._db['users'].find_one({"email": email, "password": password})
         return user or {}
 
     def get_all_sent_emails(self, email):

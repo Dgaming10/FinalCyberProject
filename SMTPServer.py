@@ -49,7 +49,7 @@ class SMTPServer:
         """
         email_addr = None
         try:
-            email_addr = Base64.Decrypt(client_sock.recv(1024).decode())
+            email_addr = client_sock.recv(1024).decode()
             self._client_dict[email_addr] = client_sock
             self._is_client_available[email_addr] = True
             files = []
@@ -77,7 +77,7 @@ class SMTPServer:
                 files_list: [File] = pickle.loads(m[4:])
                 client_sock.send(b'ACK')
                 for f in files_list:
-                    files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content))
+                    files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content[::-1]))
 
                 pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
                 client_sock.send(b'ACK')
@@ -94,15 +94,19 @@ class SMTPServer:
                 if files:
                     files = SMTPServer._save_files(files)
 
+                new_id: str = SMTPServer._send_email(sentMail, files)
+                print(self._client_dict)
+                print(self._is_client_available)
                 for email in sentMail.recipients:
                     try:
-                        new_id: str = SMTPServer._send_email(sentMail, files)
+
                         if not (self._client_dict.get(email) is not None and self._is_client_available[email] is True):
+                            print('):')
                             continue
                         print("SENT:", files)
                         email_sock: socket.socket = self._client_dict[email]
-                        email_sock.send(new_id.encode())
-                        print('sent', new_id.encode(), 'to', email)
+                        email_sock.send(Base64.Encrypt(new_id).encode())
+                        print('sent', new_id.encode(), 'to', email, type(new_id), new_id)
                         print("SENT BY SOCKET TO", email)
                     except KeyError:
                         print(email, 'not found / connected at the moment')

@@ -64,6 +64,8 @@ class POP3Server:
                     client_sock.close()
                     break
                 elif cmd == 'recv':
+
+                    print('mail here is:', email)
                     # Retrieve all received emails for the client's email
                     all_emails = self._dbService.get_all_received_emails(email)
 
@@ -96,7 +98,7 @@ class POP3Server:
                 elif cmd == 'file_con':
                     client_sock.send(b'ACK')
                     file_object_id = client_sock.recv(globals_module.OBJECT_ID_LENGTH).decode()
-                    file_content = self._dbService.get_file_content_by_id(file_object_id)
+                    file_content = self._dbService.get_file_content_by_id(file_object_id)[::-1]
                     client_sock.send(len(file_content).to_bytes(4, byteorder='big'))
                     client_sock.recv(3)
                     client_sock.send(file_content)
@@ -113,8 +115,8 @@ class POP3Server:
                     len_tuple = int.from_bytes(client_sock.recv(4), byteorder='big')
                     client_sock.send(b'ACK')
                     client_tuple = pickle.loads(client_sock.recv(len_tuple)[4:])
-                    client_dict_ans = self._dbService.authenticate_user(Base64.Decrypt(client_tuple[0]),
-                                                                        Base64.Decrypt(client_tuple[1]))
+                    client_dict_ans = self._dbService.authenticate_user(client_tuple[0],
+                                                                        client_tuple[1])
                     client_dict_pickle = b'abcd' + pickle.dumps(client_dict_ans)
                     client_sock.send(len(client_dict_pickle).to_bytes(4, byteorder='big'))
                     client_sock.recv(3)
@@ -160,13 +162,11 @@ class POP3Server:
                 # Accept incoming client connection
                 client_sock, addr = self._socket.accept()
                 # Receive client's email
-                client_email = Base64.Decrypt(client_sock.recv(1024).decode())
+                client_email = client_sock.recv(1024).decode()
                 # Check if client_email is a valid email address
-                if len(client_email) > 0 and '@' in client_email:
-                    # Send acknowledgment to the client
-                    client_sock.send(b'ack')
-                    # Create a new thread to handle the client
-                    threading.Thread(target=self.handle_client, args=(client_email, client_sock,)).start()
+                client_sock.send(b'ACK')
+                # Create a new thread to handle the client
+                threading.Thread(target=self.handle_client, args=(client_email, client_sock,)).start()
         except KeyboardInterrupt:
             print("Server shutting down...")
         finally:

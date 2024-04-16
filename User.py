@@ -8,7 +8,6 @@ from time import sleep
 import tkinter as tk
 from os import path
 from tkinter import messagebox, ttk, filedialog
-
 from tkcalendar import DateEntry
 
 import globals_module
@@ -253,7 +252,7 @@ class User:
                 messagebox.showerror("Login failed!", "Please try again")
                 self._pop3_socket.close()
             else:
-                messagebox.showinfo("Successful login!", f"Hey {user_dict['first_name']}! Welcome to MailUN")
+                messagebox.showinfo("Successful login!", f"Hey {Base64.Decrypt(user_dict['first_name'])}! Welcome to MailUN")
                 self._transition_socket.connect((SMTP_SERVER_IP, SMTP_SERVER_PORT))
                 print("connected to server from", self._transition_socket)
                 self._loginPage.destroy()
@@ -262,7 +261,7 @@ class User:
                 self._first_name = user_dict['first_name']
                 self._last_name = user_dict['last_name']
                 self._email = user_dict['email']
-                self._transition_socket.send(Base64.Encrypt(self._email).encode())
+                self._transition_socket.send(self._email.encode())
                 self._transition_socket.recv(3)
                 self._transition_socket.send(b'OPEN')
                 self._receive_thread = threading.Thread(target=self.receive_emails)
@@ -491,12 +490,12 @@ class User:
                                              day=self._send_email_scheduled_date.get_date().day,
                                              hour=int(self._send_email_scheduled_hour.get()),
                                              minute=int(self._send_email_scheduled_minute.get()))
-            sendEmail: Email = Email(Base64.Encrypt(self._email), realEmails,
+            sendEmail: Email = Email(self._email, realEmails,
                                      Base64.Encrypt(self._send_email_subject_entry.get()),
                                      Base64.Encrypt(self._send_email_message_text.get("1.0", 'end-1c')),
                                      new_datetime)
         else:
-            sendEmail: Email = Email(Base64.Encrypt(self._email), realEmails,
+            sendEmail: Email = Email(self._email, realEmails,
                                      Base64.Encrypt(self._send_email_subject_entry.get()),
                                      Base64.Encrypt(self._send_email_message_text.get("1.0", 'end-1c')), )
 
@@ -519,16 +518,17 @@ class User:
             current_file.close()
 
             file_object_list.append(File(Base64.Encrypt(file_path_name), Base64.Encrypt(file_path_ex),
-                                         current_file_content))
+                                         current_file_content[::-1]))
 
         print(file_object_list)
         files_list_dumps = b'abcd' + pickle.dumps(file_object_list)
         self._transition_socket.send(len(files_list_dumps).to_bytes(4, byteorder='big'))
+        print('len of files_list_dumP:', len(files_list_dumps))
         self._transition_socket.recv(3)
-        self._transition_socket.send(files_list_dumps)
+        print('sent:', self._transition_socket.send(files_list_dumps))
         self._transition_socket.recv(3)
         self._transition_socket.send(len(sendEmail_dumps).to_bytes(4, byteorder='big'))
-        print('received', self._transition_socket.recv(3), 'from SMTP')
+        print('received', self._transition_socket.recv(3), 'from SMTP',len(sendEmail_dumps))
 
         sentBytes = self._transition_socket.send(sendEmail_dumps)
         while sentBytes <= 0:
@@ -578,7 +578,7 @@ class User:
             self._pop3_socket.send(b'ACK')
             file_content = self._pop3_socket.recv(file_content_length)
             selected_file = open(file_path, 'wb')
-            selected_file.write(file_content)
+            selected_file.write(file_content[::-1])
             selected_file.close()
             print("SAVED!!!!!")
 
@@ -606,7 +606,7 @@ class User:
         for widget in self._single_email_frame.winfo_children():
             widget.destroy()
         # change to set mail from DB, use Email class
-        self._pop3_socket.send(str(email.mongo_id).encode())
+        self._pop3_socket.send(Base64.Encrypt(str(email.mongo_id)).encode())
         files_received_obj_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
         self._pop3_socket.send(b'ACK')
         files_received_obj = pickle.loads(self._pop3_socket.recv(files_received_obj_length)[4:])
@@ -742,7 +742,7 @@ class User:
         while self._run_receive_thread:
             print('current num:', threading.active_count())
             print("STARTING")
-            code = self._transition_socket.recv(24)
+            code = self._transition_socket.recv(34)
             print("CODE1 IS: ", code)
             if code == b'-1':
                 break
@@ -761,6 +761,7 @@ class User:
         # TODO - problem with pressing received button
         # Update the GUI to reflect the new mail
         sleep(randint(1, 5) / 10)  # Avoid collisions
+        print('EMAIL ID TO SEND TO GET:::', email_id)
         self._pop3_socket.send(b"==" + email_id)
         email_obj_len = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
         self._pop3_socket.send(b'ACK')
