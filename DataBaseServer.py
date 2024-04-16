@@ -6,6 +6,7 @@ import pymongo
 from bson import ObjectId
 from globals_module import CONNECTION_STRING
 
+
 class DataBaseService:
     """
     A class representing a database service.

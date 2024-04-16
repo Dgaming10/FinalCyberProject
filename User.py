@@ -605,11 +605,12 @@ class User:
     def saveEmail(email: Email):
         file_to_save = tk.filedialog.asksaveasfile(defaultextension='.txt', filetypes=[("Text file", ".txt")])
         files_names = "None"
-        print(email.files_info)
+        print('FILES INFO', email.files_info)
         if email.files_info:
-            files_names = ",".join(f'{tup[1]}.{tup[2]}' for tup in email.files_info)
+            files_names = ", ".join(f'{tup[0]}.{tup[1]}' for tup in email.files_info)
         file_content = (
-            f'Date:{email.creation_date}\nFrom:{email.sender}\nTo:{email.recipients}\n'
+            f'Date:{email.creation_date}\nFrom:{Base64.Decrypt(email.sender)}\n'
+            f'To:{[Base64.Decrypt(rec) for rec in email.recipients]}\n'
             f'Subject:{Base64.Decrypt(email.subject)}\n'
             f'Message:{Base64.Decrypt(email.message)}\n'
             f'Files:{files_names}')
@@ -681,12 +682,12 @@ class User:
 
         elements_list = [f'{tup[1]}.{tup[2]}' for tup in files_received_obj]
         print(email.files_info)
-
+        print('elements:', elements_list)
         cols = 2
 
         grid_frame = tk.Frame(self._single_email_frame)
         grid_frame.pack(fill='both', expand=1)
-
+        email.files_info = []
         # Create buttons and place them in a grid
         for i, element in enumerate(elements_list):
             print("current enum:", i, element)
@@ -694,7 +695,7 @@ class User:
                                command=lambda index=i: self.save_file(files_received_obj[index]))
             row, col = divmod(i, cols)
             button.grid(row=row, column=col, padx=5, pady=5)
-
+            email.files_info.append((files_received_obj[i][1], files_received_obj[i][2]))
         # Create and pack the save button
         self._single_email_save_button = tk.Button(self._single_email_frame, text="Save email",
                                                    command=lambda: User.saveEmail(email))

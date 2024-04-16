@@ -6,6 +6,7 @@ from Base64 import Base64
 from DataBaseServer import DataBaseService
 from File import File
 from Email import Email
+from pymongo.errors import ConnectionFailure
 
 SMTP_SERVER_IP = '192.168.0.181'
 SMTP_SERVER_PORT = 1111
@@ -39,6 +40,16 @@ class SMTPServer:
         self._sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._client_dict: dict = {}
         self._is_client_available: dict = {}
+        self._db = DataBaseService()
+        self._running = True
+
+    def __del__(self):
+        """
+        Destructor to clean up resources.
+        """
+        del self._db
+        self._is_client_available.clear()
+        self._client_dict.clear()
 
     def _receive_email(self, client_sock: socket.socket):
         """
@@ -92,9 +103,9 @@ class SMTPServer:
                 print('RECEIVED', sentMail.recipients, sentMail.message, sentMail.subject, sentMail.creation_date,
                       sentMail.sender)
                 if files:
-                    files = SMTPServer._save_files(files)
+                    files = self._save_files(files)
 
-                new_id: str = SMTPServer._send_email(sentMail, files)
+                new_id: str = self._send_email(sentMail, files)
                 print(self._client_dict)
                 print(self._is_client_available)
                 for email in sentMail.recipients:
@@ -119,6 +130,13 @@ class SMTPServer:
             client_sock.close()
             print("ERROR IN SERVER")
 
+        except ConnectionFailure as e:
+            print("-------------------------------------------Error in database server:-----------------------------",
+                  e)
+            self._running = False
+            for email_final in self._client_dict.keys():
+                self._client_dict[email_final].close()
+
     def start(self):
         """
         Start the SMTP server.
@@ -126,10 +144,16 @@ class SMTPServer:
         self._sock.bind((SMTP_SERVER_IP, self._port))
         self._sock.listen()
         print('server is up')
-        while True:
-            client_sock, client_address = self._sock.accept()
-            client_thread = threading.Thread(target=self._receive_email, args=(client_sock,))
-            client_thread.start()
+        try:
+            while self._running:
+                client_sock, client_address = self._sock.accept()
+                client_thread = threading.Thread(target=self._receive_email, args=(client_sock,))
+                client_thread.start()
+        except KeyboardInterrupt:
+            print("Server shutting down...")
+        finally:
+            # Close the server socket
+            self._sock.close()
 
     def stop(self):
         """
@@ -137,8 +161,7 @@ class SMTPServer:
         """
         self._sock.close()
 
-    @staticmethod
-    def _send_email(mailToSend: Email, files) -> str:
+    def _send_email(self, mailToSend: Email, files) -> str:
         """
         Send an email to the database and return the ID.
 
@@ -149,14 +172,11 @@ class SMTPServer:
         str: The ID of the stored email.
         """
 
-        db = DataBaseService()
-        return db.store_email(mailToSend.sender, mailToSend.recipients, mailToSend.subject, mailToSend.message,
-                              mailToSend.creation_date, files)
+        return self._db.store_email(mailToSend.sender, mailToSend.recipients, mailToSend.subject, mailToSend.message,
+                                    mailToSend.creation_date, files)
 
-    @staticmethod
-    def _save_files(files) -> list:
-        db = DataBaseService()
-        return db.save_files(files)
+    def _save_files(self, files) -> list:
+        return self._db.save_files(files)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import globals_module
 from Base64 import Base64
 from DataBaseServer import DataBaseService
 from Email import Email
+from pymongo.errors import ConnectionFailure
 
 # Constants for POP3 server configuration
 POP3_SERVER_IP = '192.168.0.181'
@@ -33,13 +34,15 @@ class POP3Server:
         """
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._dbService = DataBaseService()
+        self._clients = []
+        self._running = True
 
     def __del__(self):
         """
         Destructor to clean up resources.
         """
-        if hasattr(self, '_dbService'):
-            del self._dbService
+        del self._dbService
+        self._clients.clear()
 
     def handle_client(self, email, client_sock):
         """
@@ -146,6 +149,13 @@ class POP3Server:
         except (socket.error, pickle.PickleError) as e:
             print("-------------------------------------------Error in pop3 server:-----------------------------", e)
             client_sock.close()
+            self._clients.remove(client_sock)
+        except ConnectionFailure as e:
+            print("-------------------------------------------Error in database server:-----------------------------",
+                  e)
+            self._running = False
+            for con in self._clients:
+                con.close()
 
     def run(self):
         """
@@ -157,12 +167,13 @@ class POP3Server:
         self._socket.listen()
         print('POP3 is up')
         try:
-            while True:
+            while self._running:
                 # Accept incoming client connection
                 client_sock, addr = self._socket.accept()
                 # Receive client's email
                 client_email = client_sock.recv(1024).decode()
-                print('new connection from:',client_email)
+                print('new connection from:', client_email)
+                self._clients.append(client_sock)
                 # Check if client_email is a valid email address
                 client_sock.send(b'ACK')
                 # Create a new thread to handle the client

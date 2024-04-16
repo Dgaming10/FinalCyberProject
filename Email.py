@@ -35,6 +35,8 @@ class Email:
         - creation_date (datetime.date): Email creation date.
         - mongo_id (str): MongoDB ID for the email (default is None).
         """
+        if files_info is None:
+            files_info = []
         self._sender = sender
         self._recipients = recipients
         self._subject = subject
