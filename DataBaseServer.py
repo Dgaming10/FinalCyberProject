@@ -1,10 +1,10 @@
-import base64
+from Base64 import Base64
 import datetime
 
 from gridfs import GridFS
 import pymongo
 from bson import ObjectId
-
+from globals_module import CONNECTION_STRING
 
 class DataBaseService:
     """
@@ -19,8 +19,8 @@ class DataBaseService:
     - __init__: Initialize the database service.
     - __del__: Close the MongoDB client on object deletion.
     - authenticate_user: Authenticate a user based on email and password.
-    - get_all_sent_mails: Retrieve all sent mails for a given email.
-    - get_all_received_mails: Retrieve all received mails for a given email.
+    - get_all_sent_emails: Retrieve all sent emails for a given email.
+    - get_all_received_emails: Retrieve all received emails for a given email.
     - email_to_mongo_obj: Convert an email to a MongoDB object.
     - store_email: Store an email in the database.
     - find_email_by_id: Find an email by its ID.
@@ -32,8 +32,7 @@ class DataBaseService:
         """
         Initialize the database service.
         """
-        self._connection_string = ("mongodb+srv://root:qazpoi12345@cyberprojectdb.5cnsgy6.mongodb.net/?retryWrites"
-                                   "=true&w=majority&ssl=true")
+        self._connection_string = CONNECTION_STRING
         self._client = pymongo.MongoClient(self._connection_string)
         self._db = self._client["CyberProjectDB"]
         self._fs = GridFS(self._db)
@@ -56,10 +55,10 @@ class DataBaseService:
         Returns:
         dict: User information if authentication is successful, an empty dictionary otherwise.
         """
-        user = self._db['users'].find_one({"email": email, "password": base64.b64encode(password.encode()).decode()})
+        user = self._db['users'].find_one({"email": email, "password": password.encode().decode()})
         return user or {}
 
-    def get_all_sent_mails(self, email):
+    def get_all_sent_emails(self, email):
         """
         Retrieve all sent mails for a given email.
 
@@ -80,7 +79,7 @@ class DataBaseService:
             ansList.append(ans)
         return ansList
 
-    def get_all_received_mails(self, email):
+    def get_all_received_emails(self, email):
         """
         Retrieve all received mails for a given email.
 
@@ -170,13 +169,13 @@ class DataBaseService:
         dict: Found email.
         """
         print("EMAIL ID: ", email_id)
-        mail = self._db['mails'].find_one({'_id': ObjectId(email_id)}, {})
-        return mail
+        email = self._db['mails'].find_one({'_id': ObjectId(email_id)}, {})
+        return email
 
-    def get_files_by_id(self, mail_id) -> list:
+    def get_files_by_id(self, email_id) -> list:
         final_ans = []
-        mail = self._db['mails'].find_one({'_id': ObjectId(mail_id)}, {})
-        for file in mail["files"]:
+        email = self._db['mails'].find_one({'_id': ObjectId(email_id)}, {})
+        for file in email["files"]:
             current_file = self._fs.get(file)
             final_ans.append((current_file.read(), current_file.filex, current_file.filename))
 
@@ -201,17 +200,17 @@ class DataBaseService:
 
         return final_ans
 
-    def delete_mail(self, mail_tup):
-        mail_id = mail_tup[0]
-        if isinstance(mail_id, str):
-            mail_id = ObjectId(mail_id)
-        mail = self._db['mails'].find_one({'_id': mail_id}, {})
-        recipients_mails = [res_obj['email'] for res_obj in mail.get('recipients')]
-        deleted_mails = mail.get('deleted')
-        deleted_mails.append(mail_tup[1])
-        self._db['mails'].update_one({'_id': mail_id}, {'$push': {'deleted': mail_tup[1]}})
-        if len(deleted_mails) == len(recipients_mails) + 1:
-            files_ids = mail.get('files')
-            self._db['mails'].delete_one({'_id': mail_id})
+    def delete_email(self, email_tup):
+        email_id = email_tup[0]
+        if isinstance(email_id, str):
+            email_id = ObjectId(email_id)
+        email = self._db['mails'].find_one({'_id': email_id}, {})
+        recipients_emails = [res_obj['email'] for res_obj in email.get('recipients')]
+        deleted_emails = email.get('deleted')
+        deleted_emails.append(email_tup[1])
+        self._db['mails'].update_one({'_id': email_id}, {'$push': {'deleted': email_tup[1]}})
+        if len(deleted_emails) == len(recipients_emails) + 1:
+            files_ids = email.get('files')
+            self._db['mails'].delete_one({'_id': email_id})
             for file_id in files_ids:
                 self._fs.delete(file_id)

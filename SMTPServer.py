@@ -5,7 +5,7 @@ import threading
 from Base64 import Base64
 from DataBaseServer import DataBaseService
 from File import File
-from Mail import Mail
+from Email import Email
 
 SMTP_SERVER_IP = '192.168.0.181'
 SMTP_SERVER_PORT = 1111
@@ -38,6 +38,7 @@ class SMTPServer:
         self._port = port
         self._sock: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._client_dict: dict = {}
+        self._is_client_available: dict = {}
 
     def _receive_email(self, client_sock: socket.socket):
         """
@@ -46,49 +47,47 @@ class SMTPServer:
         Parameters:
         - client_sock (socket.socket): The socket of the connected client.
         """
+        email_addr = None
         try:
-            mail_addr = client_sock.recv(1024).decode()
-            self._client_dict[mail_addr] = client_sock
+            email_addr = Base64.Decrypt(client_sock.recv(1024).decode())
+            self._client_dict[email_addr] = client_sock
+            self._is_client_available[email_addr] = True
             files = []
+            client_sock.send(b'ACK')
             while True:
-                while True:
-                    files.clear()
-                    client_msg = client_sock.recv(5)
-                    if client_msg == b'CLOSE':
-                        client_sock.send(b'-1')
-                        continue
+                print("HELLO ITS ME, talking to:", email_addr)
+                files.clear()
+                client_msg = client_sock.recv(4)
+                print('client_msg:', client_msg)
+                if client_msg == b'CLSE':
+                    client_sock.send(b'-1')
+                    print('sent -1')
+                    self._is_client_available[email_addr] = False
+                    continue
+                elif client_msg == b'OPEN':
+                    self._is_client_available[email_addr] = True
+                    continue
 
-                    files_list_length = int.from_bytes(client_msg, byteorder='big')
-                    print(files_list_length)
-                    client_sock.send(b'ACK')
-                    m = client_sock.recv(files_list_length)
-                    print(len(m))
-                    try:
-                        files_list: [File] = pickle.loads(m[4:])
-                    except pickle.UnpicklingError:
-                        # TODO - add error handling
-                        print("M:", m)
+                files_list_length = int.from_bytes(client_msg, byteorder='big')
+                print("GPT SOME", files_list_length)
+                client_sock.send(b'ACK')
+                m = client_sock.recv(files_list_length)
+                print(len(m))
 
-                    client_sock.send(b'ACK')
-                    for f in files_list:
+                files_list: [File] = pickle.loads(m[4:])
+                client_sock.send(b'ACK')
+                for f in files_list:
+                    files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content))
 
-                        files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content))
-
-                    # for tup in files:
-                    #     file = open(f'fileReceived/{tup[0]}.{tup[1]}', 'wb')
-                    #     file.write(tup[2])
-                    #     file.close()
-
-                    pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
-                    client_sock.send(b'ACK')
-                    sentMail: Mail = pickle.loads(client_sock.recv(pickle_mail_len))
-                    if isinstance(sentMail, Mail):
-                        print("BREAKING")
-                        break
-
-                sentMail = Mail(Base64.Decrypt(sentMail.sender), [Base64.Decrypt(i) for i in sentMail.recipients],
-                                sentMail.subject, sentMail.message,
-                                sentMail.creation_date)
+                pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
+                client_sock.send(b'ACK')
+                print('sent an ack for this shit')
+                sentMail: Email = pickle.loads(client_sock.recv(pickle_mail_len))
+                #TODO - maybe dont create from constructor
+                print('id of sent email:', id(sentMail))
+                sentMail = Email(sentMail.sender, [i for i in sentMail.recipients],
+                                 sentMail.subject, sentMail.message,
+                                 sentMail.creation_date)
 
                 print('RECEIVED', sentMail.recipients, sentMail.message, sentMail.subject, sentMail.creation_date,
                       sentMail.sender)
@@ -97,19 +96,22 @@ class SMTPServer:
 
                 for email in sentMail.recipients:
                     try:
-                        print("SENT:", files)
                         new_id: str = SMTPServer._send_email(sentMail, files)
+                        if not (self._client_dict.get(email) is not None and self._is_client_available[email] is True):
+                            continue
+                        print("SENT:", files)
                         email_sock: socket.socket = self._client_dict[email]
-                        sentMail.mongo_id = new_id
-                        sentMail.files_ids = files
-
-                        email_sock.send(pickle.dumps(sentMail))
+                        email_sock.send(new_id.encode())
+                        print('sent', new_id.encode(), 'to', email)
                         print("SENT BY SOCKET TO", email)
                     except KeyError:
                         print(email, 'not found / connected at the moment')
 
         except socket.error:
-            self._client_dict.pop(client_sock)
+            if email_addr is not None:
+                self._client_dict.pop(email_addr)
+                self._is_client_available.pop(email_addr)
+            client_sock.close()
             print("ERROR IN SERVER")
 
     def start(self):
@@ -132,12 +134,12 @@ class SMTPServer:
         self._sock.close()
 
     @staticmethod
-    def _send_email(mailToSend: Mail, files) -> str:
+    def _send_email(mailToSend: Email, files) -> str:
         """
         Send an email to the database and return the ID.
 
         Parameters:
-        - mailToSend (Mail): The email to be sent.
+        - mailToSend (Email): The email to be sent.
 
         Returns:
         str: The ID of the stored email.

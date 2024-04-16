@@ -5,7 +5,7 @@ import threading
 import globals_module
 from Base64 import Base64
 from DataBaseServer import DataBaseService
-from Mail import Mail
+from Email import Email
 
 # Constants for POP3 server configuration
 POP3_SERVER_IP = '192.168.0.181'
@@ -51,6 +51,8 @@ class POP3Server:
         """
         try:
             while True:
+                print('talking to:', email)
+                # TODO - remove ALL prints in the end
                 # Receive command from the client
                 cmd = client_sock.recv(1024).decode()
                 print('cmd is:', cmd)
@@ -62,35 +64,35 @@ class POP3Server:
                     client_sock.close()
                     break
                 elif cmd == 'recv':
-                    # Retrieve all received mails for the client's email
-                    all_mails = self._dbService.get_all_received_mails(email)
+                    # Retrieve all received emails for the client's email
+                    all_emails = self._dbService.get_all_received_emails(email)
 
-                    # Convert MongoDB documents to Mail objects
-                    all_list_dict = [Mail(m.get('sender').get('email'),
-                                          [rec.get('email') for rec in m.get('recipients')],
-                                          m.get('subject'), m.get('message'), m.get('creation_date'), m.get('_id')
-                                          )
-                                     for m in all_mails]
-                    # Serialize and send the list of mails to the client
-                    all_mails_dump = pickle.dumps(all_list_dict)
-                    print('sent int:::', client_sock.send(str(len(all_mails_dump)).encode()))
+                    # Convert MongoDB documents to Email objects
+                    all_list_dict = [Email(m.get('sender').get('email'),
+                                           [rec.get('email') for rec in m.get('recipients')],
+                                           m.get('subject'), m.get('message'), m.get('creation_date'), m.get('_id')
+                                           )
+                                     for m in all_emails]
+                    # Serialize and send the list of emails to the client
+                    all_emails_dump = pickle.dumps(all_list_dict)
+                    print('sent int:::', client_sock.send(len(all_emails_dump).to_bytes(4, byteorder="big")))
                     client_sock.recv(3)
-                    client_sock.send(all_mails_dump)
+                    client_sock.send(all_emails_dump)
                 elif cmd == 'sent':
-                    # Retrieve all sent mails for the client's email
-                    all_mails = self._dbService.get_all_sent_mails(email)
+                    # Retrieve all sent emails for the client's email
+                    all_emails = self._dbService.get_all_sent_emails(email)
 
-                    # Convert MongoDB documents to Mail objects
-                    all_list_dict = [Mail(m.get('sender').get('email'),
-                                          [rec.get('email') for rec in m.get('recipients')],
-                                          m.get('subject'), m.get('message'), m.get('creation_date'), m.get('_id')
-                                          )
-                                     for m in all_mails]
-                    # Serialize and send the list of mails to the client
-                    all_mails_dump = pickle.dumps(all_list_dict)
-                    print('sent int:::', client_sock.send(str(len(all_mails_dump)).encode()))
+                    # Convert MongoDB documents to Eemail objects
+                    all_list_dict = [Email(m.get('sender').get('email'),
+                                           [rec.get('email') for rec in m.get('recipients')],
+                                           m.get('subject'), m.get('message'), m.get('creation_date'), m.get('_id')
+                                           )
+                                     for m in all_emails]
+                    # Serialize and send the list of emails to the client
+                    all_emails_dump = pickle.dumps(all_list_dict)
+                    print('sent int:::', client_sock.send(len(all_emails_dump).to_bytes(4, byteorder="big")))
                     client_sock.recv(3)
-                    client_sock.send(all_mails_dump)
+                    client_sock.send(all_emails_dump)
                 elif cmd == 'file_con':
                     client_sock.send(b'ACK')
                     file_object_id = client_sock.recv(globals_module.OBJECT_ID_LENGTH).decode()
@@ -100,11 +102,11 @@ class POP3Server:
                     client_sock.send(file_content)
                 elif cmd == 'delete':
                     client_sock.send(b'ACK')
-                    mail_tup_length = int.from_bytes(client_sock.recv(4), byteorder='big')
+                    email_tup_length = int.from_bytes(client_sock.recv(4), byteorder='big')
                     client_sock.send(b'ACK')
-                    mail_tup = pickle.loads(client_sock.recv(mail_tup_length))
-                    self._dbService.delete_mail(mail_tup)
-                    print("DELETE TUP:", mail_tup)
+                    email_tup = pickle.loads(client_sock.recv(email_tup_length))
+                    self._dbService.delete_email(email_tup)
+                    print("DELETE TUP:", email_tup)
                     client_sock.send(b'ACK')
                 elif cmd == 'login':
                     client_sock.send(b'ACK')
@@ -119,22 +121,26 @@ class POP3Server:
                     client_sock.send(client_dict_pickle)
                     if client_dict_ans == {}:
                         break
-                else:
-                    # Retrieve a single mail by its ID and send it to the client
-                    # TODO -> send only the file names, no need for sending the whole Mail again
-                    mongo_mail = self._dbService.find_email_by_id(cmd)
-                    files_info = [(f_id,) + self._dbService.get_file_name_ex_by_id(f_id) for f_id in
-                                  mongo_mail.get('files')]
-                    single_mail_obj = Mail(mongo_mail.get('sender').get('email'),
-                                           [mail.get('email') for mail in mongo_mail.get('recipients')],
-                                           mongo_mail.get('subject'), mongo_mail.get('message'),
-                                           mongo_mail.get('creation_date'), mongo_mail.get('_id'),
-                                           files_info)
-
-                    mongo_mail_dump = pickle.dumps(single_mail_obj)
-                    client_sock.send(len(mongo_mail_dump).to_bytes(4, byteorder='big'))
+                elif cmd[0:2] == "==":
+                    mongo_email = self._dbService.find_email_by_id(Base64.Decrypt(cmd[2:]))
+                    email_obj = Email(mongo_email.get('sender').get('email'),
+                                      [rec.get('email') for rec in mongo_email.get('recipients')],
+                                      mongo_email.get('subject'), mongo_email.get('message')
+                                      , mongo_email.get('creation_date'), mongo_email.get('_id'))
+                    mongo_email_dump = b'abcd' + pickle.dumps(email_obj)
+                    client_sock.send(len(mongo_email_dump).to_bytes(4, byteorder='big'))
                     client_sock.recv(3)
-                    client_sock.send(mongo_mail_dump)
+                    client_sock.send(mongo_email_dump)
+                else:
+                    # Retrieve a single email by its ID and send it to the client
+                    mongo_email = self._dbService.find_email_by_id(Base64.Decrypt(cmd))
+                    files_info = [(f_id,) + self._dbService.get_file_name_ex_by_id(f_id) for f_id in
+                                  mongo_email.get('files')]
+
+                    mongo_email_dump = b'abcd' + pickle.dumps(files_info)
+                    client_sock.send(len(mongo_email_dump).to_bytes(4, byteorder='big'))
+                    client_sock.recv(3)
+                    client_sock.send(mongo_email_dump)
         except socket.error as e:
             print("Socket Error:", e)
         finally:
@@ -154,7 +160,7 @@ class POP3Server:
                 # Accept incoming client connection
                 client_sock, addr = self._socket.accept()
                 # Receive client's email
-                client_email = client_sock.recv(1024).decode()
+                client_email = Base64.Decrypt(client_sock.recv(1024).decode())
                 # Check if client_email is a valid email address
                 if len(client_email) > 0 and '@' in client_email:
                     # Send acknowledgment to the client
@@ -170,6 +176,5 @@ class POP3Server:
 
 # Entry point of the script
 if __name__ == "__main__":
-
     server = POP3Server()
     server.run()

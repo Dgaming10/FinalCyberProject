@@ -1,7 +1,7 @@
 import datetime
 
 
-class Mail:
+class Email:
     """
     A class representing an email.
 

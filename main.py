@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import messagebox
 import re
 import DataBaseServer
-from Mail import Mail
+from Email import Email
 from User import User
 
 
@@ -50,7 +50,7 @@ def login():
                 print("mail:", mail, label_text)
                 label.bind("<Button-1>", lambda event, mail2=mail: open_single_mail_window(mail2))
                 label.pack(fill=tk.X)
-            send_mail_button = tk.Button(mails_frame, text="Send Mail",
+            send_mail_button = tk.Button(mails_frame, text="Send Email",
                                          command=lambda event=user.email: open_send_mail_window(event))
             send_mail_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
 
@@ -100,8 +100,8 @@ def send_mail(fromUser: User):
     print(f"mail sent from {fromUser.email} to: {realEmails}")
     db = DataBaseServer.DataBaseService()
     recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
-    sendEmail = Mail(fromUser,recipients, send_mail_subject_entry.get(), send_mail_message_text.get("1.0", 'end-1c'),
-                     datetime.datetime.now())
+    sendEmail = Email(fromUser, recipients, send_mail_subject_entry.get(), send_mail_message_text.get("1.0", 'end-1c'),
+                      datetime.datetime.now())
     fromUser.send_email()
     print("EMAIL SENT NOW!!")
 
@@ -138,7 +138,7 @@ def open_single_mail_window(mail):
     # Clear existing labels in newFrame
     for widget in single_mail_frame.winfo_children():
         widget.destroy()
-    # change to set mail from DB, use Mail class
+    # change to set mail from DB, use Email class
     single_mail_frame_label = tk.Label(single_mail_frame, text=mail.get('message'), bg="lightgray", relief="raised")
     single_mail_frame_label.pack(fill=tk.X)
     single_mail_frame_label.bind("<Button-1>", open_mails_window)
