@@ -56,7 +56,7 @@ class DataBaseService:
         Returns:
         dict: User information if authentication is successful, an empty dictionary otherwise.
         """
-        user = self._db['users'].find_one({"email": email, "password": password})
+        user = self._db['users'].find_one({"email": {"$eq": email}, "password": {"$eq": password}})
         return user or {}
 
     def get_all_sent_emails(self, email):
@@ -118,6 +118,20 @@ class DataBaseService:
         ansDICT = self._db['users'].find_one({"email": email}, {})
         print("find one for", email, ansDICT)
         return ansDICT
+
+    def store_user(self, email, password, first_name, last_name, age) -> str:
+        new_item = {
+            'email': email,
+            'password': password,
+            'first_name': first_name,
+            'last_name': last_name,
+            'age': age
+        }
+        to_return = self._db["users"].insert_one(new_item)
+        final_ans = str(to_return.inserted_id)
+
+        print('to_return:', final_ans)
+        return final_ans
 
     def store_email(self, fromMail, toMails, subject, message, creation_date, files) -> str:
         """

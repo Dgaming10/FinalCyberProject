@@ -9,6 +9,8 @@ import tkinter as tk
 from os import path
 from tkinter import messagebox, ttk, filedialog
 from tkcalendar import DateEntry
+from random import choice
+from math import ceil
 
 import globals_module
 from Base64 import Base64
@@ -81,6 +83,7 @@ class User:
         self.root.title("MailUN")
         self.root.geometry("500x600")
         self.root.configure(bg="#f0f0f0")
+        self.root.protocol("WM_DELETE_WINDOW", self.close_program)
 
         self._loginPage = tk.Frame(self.root)
         self._registerPage = tk.Frame(self.root)
@@ -233,35 +236,43 @@ class User:
         """
         # Add your login logic here
         if User.is_valid_email(email) and User.is_valid_password(password):
+            self.stop_pop3_connection()
             self._email = Base64.Encrypt(email)
             self.start_pop3_connection()
             messagebox.showinfo("Login", f"Logged in with email: {email}")
-            self._pop3_socket.send(b'login')
-            self._pop3_socket.recv(3)
-            login_tuple_pickle = b'abcd' + pickle.dumps((Base64.Encrypt(email), Base64.Encrypt(password)))
-            self._pop3_socket.send(len(login_tuple_pickle).to_bytes(4, byteorder='big'))
-            self._pop3_socket.recv(3)
-            self._pop3_socket.send(login_tuple_pickle)
-            len_dict = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
-            self._pop3_socket.send(b'ACK')
-            user_dict = pickle.loads(self._pop3_socket.recv(len_dict)[4:])
-            print(user_dict)
-            if len(user_dict.keys()) == 0:
-                messagebox.showerror("Login failed!", "Please try again")
-                self._pop3_socket.close()
-            else:
-                messagebox.showinfo("Successful login!",
-                                    f"Hey {Base64.Decrypt(user_dict['first_name'])}! Welcome to MailUN")
+            try:
+                self._pop3_socket.send(b'LOGIN')
+                self._pop3_socket.recv(3)
 
-                self._loginPage.destroy()
-                self._registerPage.destroy()
-                self._age = user_dict['age']
-                self._first_name = user_dict['first_name']
-                self._last_name = user_dict['last_name']
-                self._email = user_dict['email']
-                self.start_smtp_connection()
-                print("connected to server from", self._transition_socket)
-                self.restart_thread()
+                random_prefix = ''.join(choice(globals_module.ASCII_LETTERS) for _ in range(4))
+                login_tuple_pickle = random_prefix.encode() + pickle.dumps((Base64.Encrypt(email), Base64.Encrypt(password)))
+                self._pop3_socket.send(len(login_tuple_pickle).to_bytes(4, byteorder='big'))
+                self._pop3_socket.recv(3)
+                self._pop3_socket.send(login_tuple_pickle)
+                len_dict = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
+                self._pop3_socket.send(b'ACK')
+                user_dict = pickle.loads(self._pop3_socket.recv(len_dict)[4:])
+                if len(user_dict.keys()) == 0:
+                    messagebox.showerror("Login failed!", "Please try again")
+                    self._pop3_socket.close()
+                else:
+                    messagebox.showinfo("Successful login!",
+                                        f"Hey {Base64.Decrypt(user_dict['first_name'])}! Welcome to MailUN")
+
+                    self._loginPage.destroy()
+                    self._registerPage.destroy()
+                    self._age = user_dict['age']
+                    self._first_name = user_dict['first_name']
+                    self._last_name = user_dict['last_name']
+                    self._email = user_dict['email']
+                    self.start_smtp_connection()
+                    print("connected to server from", self._transition_socket)
+                    print('calling restart_thread from login')
+                    self.restart_thread()
+            except (socket.error, pickle.PickleError) as e:
+                print('------------------------- Login Error ---------------------------', e)
+                messagebox.showerror("Error occurred!", "Logging in process")
+                return
         else:
             messagebox.showerror("Error", "Invalid email or password format")
 
@@ -269,15 +280,70 @@ class User:
         """
         Handle the registration process.
         """
-        # TODO - add register function
-        email = self._email_entry.get()
-        password = self._password_entry.get()
+        print('hey!!!!')
+        email = self._email_entry_reg_register.get()
 
-        if self.is_valid_email(email):
-            messagebox.showinfo("Register", f"Registered with email: {email}")
-            # Add your registration logic here
-        else:
-            messagebox.showerror("Error", "Invalid email format")
+        password = self._password_entry_reg_register.get()
+        first_name = self._first_name_entry_register.get()
+        last_name = self._last_name_entry_register.get()
+        try:
+            # Parse the date string into a datetime object
+            birth_date = datetime.datetime.strptime(self._birth_date_entry_register.get(), "%d-%m-%Y")
+
+            # Check if the birthdate is not in the future
+            if birth_date > datetime.datetime.now() or datetime.datetime.now().year - birth_date.year > 150:
+                messagebox.showerror("Error occurred!", "Please enter a valid birth date")
+                return
+
+            if not self.is_valid_email(email):
+                print('valid not', email, self.is_valid_email(email))
+                messagebox.showerror("Error occurred!", "Invalid email format")
+                return
+
+            if not self.is_valid_password(password):
+                messagebox.showerror("Error occurred!", "Invalid password format")
+                return
+
+            pattern = r'^[abc]+$'
+            if 2 < len(first_name) < 30 and 2 < len(last_name) < 30 and first_name.isalpha() and last_name.isalpha():
+                print('entered loop cool')
+                self.stop_pop3_connection()
+                self._email = Base64.Encrypt(email)
+                self.start_pop3_connection()
+                self._pop3_socket.send(b'REGISTER')
+                self._pop3_socket.recv(3)
+                current_date = datetime.datetime.now()
+                age = current_date.year - birth_date.year - ((current_date.month, current_date.day) <
+                                                             (birth_date.month, birth_date.day))
+                dict_so_send = {'email': Base64.Encrypt(email), 'password': Base64.Encrypt(password),
+                                'first_name': Base64.Encrypt(first_name),
+                                'last_name': Base64.Encrypt(last_name), 'age': age}
+                pickle_dumps = pickle.dumps(dict_so_send)
+                self._pop3_socket.send((len(pickle_dumps) + 4).to_bytes(4, byteorder='big'))
+                self._pop3_socket.recv(3)
+                random_prefix = ''.join(choice(globals_module.ASCII_LETTERS) for _ in range(4))
+                self._pop3_socket.send(random_prefix.encode() + pickle_dumps[::-1])
+                reg_code = self._pop3_socket.recv(1).decode()
+                print('reg_Cide', reg_code)
+                if reg_code == 'S':
+                    messagebox.showinfo("Successful register!",
+                                        f"Hey {first_name}! Welcome to MailUN")
+                    self._loginPage.destroy()
+                    self._registerPage.destroy()
+                    self._age = age
+                    self._first_name = Base64.Encrypt(first_name)
+                    self._last_name = Base64.Encrypt(last_name)
+                    self.start_smtp_connection()
+                    print("connected to server from", self._transition_socket)
+                    print('calling restart thread from register')
+                    self.restart_thread()
+                else:
+                    messagebox.showerror("Error occurred!", "Email address already exists or another error occurred")
+
+        except ValueError:
+            # If parsing fails, the date string is not valid
+            messagebox.showerror("Error occurred!", "Please enter a valid birth date")
+            return
 
     def register_page(self):
         """
@@ -447,13 +513,13 @@ class User:
 
     def restart_thread(self):
         try:
-            if self._transition_socket is None:
-                return
-            self._transition_socket.send(b'OPEN')
-            print('sent OPEN to SMTP')
-            self._receive_thread = threading.Thread(target=self.receive_emails)
-            self._run_receive_thread = True
-            self._receive_thread.start()
+            if not (self._transition_socket is None or (self._receive_thread is not None and
+                                                        self._receive_thread.is_alive() is True)):
+                self._transition_socket.send(b'OPEN')
+                print('sent OPEN to SMTP')
+                self._receive_thread = threading.Thread(target=self.receive_emails)
+                self._run_receive_thread = True
+                self._receive_thread.start()
             self.open_emails_window(None)
         except (threading.ThreadError, socket.error):
             print('-------------------- error in restarting thread -------------------------')
@@ -471,6 +537,14 @@ class User:
                 self._pop3_socket.close()
             finally:
                 self.close_program()
+
+    def stop_pop3_connection(self):
+        if self._pop3_socket is None:
+            return
+        try:
+            self._pop3_socket.close()
+        except socket.error:
+            messagebox.showerror("Error occurred!", "Place - disconnecting from the pop3 server")
 
     def start_smtp_connection(self):
         try:
@@ -509,10 +583,10 @@ class User:
         if validation_ans is False:
             return
 
-        print('is alive?', self._receive_thread.is_alive())
+        print('is alive?', self._receive_thread.is_alive(), threading.active_count())
         emails: str = self._send_email_recipients_entry.get()
-        realEmails = [Base64.Encrypt(i) for i in emails.split(',') if i != ""]
-        # TODO: check if only set(realEmails) will have a different impact
+        realEmails = [Base64.Encrypt(i.strip()) for i in emails.split(',') if i != ""]
+
         realEmails = list(set(realEmails))
         print(f"mail sent from {self._email} to: {realEmails}")
         # db = DataBaseServer.DataBaseService()
@@ -552,7 +626,6 @@ class User:
             file_object_list.append(File(Base64.Encrypt(file_path_name), Base64.Encrypt(file_path_ex),
                                          current_file_content[::-1]))
 
-        print(file_object_list)
         try:
 
             if self._receive_thread.is_alive() is True:
@@ -585,6 +658,7 @@ class User:
                 self._receive_thread.join()
 
             self.start_smtp_connection()
+            print('calling restart thread from send_email')
             self.restart_thread()
             return
 
@@ -625,7 +699,7 @@ class User:
                                                  defaultextension=f'.{file_info[2]}',
                                                  filetypes=[("All files", "*.*")])
         if file_path:
-            self._pop3_socket.send(b'file_con')
+            self._pop3_socket.send(b'FILE_CON')
             self._pop3_socket.recv(3)
             self._pop3_socket.send(str(file_info[0]).encode())
             file_content_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
@@ -637,9 +711,10 @@ class User:
             print("SAVED!!!!!")
 
     def delete_email(self, email_obj):
-        self._pop3_socket.send(b'delete')
+        print('enterig delete_email')
+        self._pop3_socket.send(b'DELETE')
         self._pop3_socket.recv(3)
-        email_tup_dumps = pickle.dumps((email_obj.mongo_id, email_obj.sender))
+        email_tup_dumps = pickle.dumps((email_obj.mongo_id, self._email))[::-1]
         self._pop3_socket.send(len(email_tup_dumps).to_bytes(4, byteorder='big'))
         self._pop3_socket.recv(3)
         self._pop3_socket.send(email_tup_dumps)
@@ -648,7 +723,6 @@ class User:
         self.open_emails_window()
 
     def open_single_email_window(self, email):
-        # TODO -> check the thing with having both a mail and a mail_received_obj objects.
         """
         Open the window for a single mail.
 
@@ -681,7 +755,7 @@ class User:
         single_email_frame_label.bind("<Button-1>", self.open_emails_window)
 
         elements_list = [f'{tup[1]}.{tup[2]}' for tup in files_received_obj]
-        print(email.files_info)
+
         print('elements:', elements_list)
         cols = 2
 
@@ -697,13 +771,21 @@ class User:
             button.grid(row=row, column=col, padx=5, pady=5)
             email.files_info.append((files_received_obj[i][1], files_received_obj[i][2]))
         # Create and pack the save button
+        emails_label_text = ""
+        if self._current_filter_state[0] == 'recv':
+            emails_label_text = 'received from: ' + Base64.Decrypt(email.sender)
+        else:
+            emails_label_text = 'sent to: ' + ','.join([Base64.Decrypt(sent_email) for sent_email in email.recipients])
+        emails_label = tk.Label(self._single_email_frame, text=emails_label_text)
+        # Pack the label at the bottom center
+        emails_label.pack(side=tk.BOTTOM, pady=10)
         self._single_email_save_button = tk.Button(self._single_email_frame, text="Save email",
                                                    command=lambda: User.saveEmail(email))
-        self._single_email_save_button.pack(side=tk.BOTTOM, pady=10)
+        self._single_email_save_button.pack(side=tk.BOTTOM, pady=5)
 
         self._single_email_delete_button = tk.Button(self._single_email_frame, text="Delete email",
                                                      command=lambda: self.delete_email(email))
-        self._single_email_delete_button.pack(side=tk.BOTTOM, pady=10)
+        self._single_email_delete_button.pack(side=tk.BOTTOM, pady=5)
 
         self._emails_frame.pack_forget()
         self._single_email_frame.pack(fill='both', expand=1)
@@ -723,7 +805,7 @@ class User:
             widget.destroy()
 
         def _load_emails(filter_type) -> [Email]:
-            print("HI1")
+
             if filter_type == 'sent':
                 self._current_filter_state[1] = True
             else:
@@ -732,23 +814,22 @@ class User:
             for inner_widget in self._emails_frame.winfo_children():
                 if inner_widget.winfo_class() == 'Label':
                     inner_widget.destroy()
-            print("HI2")
+
             try:
                 if filter_type == 'sent':
-                    self._pop3_socket.send(b'sent')
+                    self._pop3_socket.send(b'SENT')
 
                 else:
-                    self._pop3_socket.send(b'recv')
-                print("HI3")
+                    self._pop3_socket.send(b'RECV')
+
                 len_to_receive = int.from_bytes(self._pop3_socket.recv(4), byteorder="big")
-                print("HI4")
+
                 print("len_to_receive:", len_to_receive)
                 self._pop3_socket.send(b'ACK')
-                print("HI5")
+
                 data_received = self._pop3_socket.recv(int(len_to_receive))
-                print("HI6")
-                print(data_received, len(data_received))
-                emails: [Email] = pickle.loads(data_received)
+
+                emails: [Email] = pickle.loads(data_received[4:])
             except (socket.error, pickle.PickleError) as e:
                 messagebox.showerror("Error occurred!", "Place - loading emails")
                 print('-----------------------load emails error ------------------------', e)
@@ -756,8 +837,6 @@ class User:
                 self.start_pop3_connection()
                 return
 
-            print("HI7")
-            print("THIS IS: ", emails)
             labels = [f"{Base64.Decrypt(email.sender)} -> {Base64.Decrypt(email.subject)} | {email.creation_date}"
                       for email in emails]
 
@@ -767,7 +846,6 @@ class User:
                 label.bind("<Button-1>", lambda event, email2=email: self.open_single_email_window(email2))
                 label.pack(fill=tk.X)
             self._emails_frame.pack(fill='both', expand=1)
-            print("HI8")
             self._current_filter_state[0] = filter_type
 
         self._side_menu_frame = tk.Frame(self._emails_frame, bg="#f0f0f0")
@@ -810,10 +888,10 @@ class User:
         Receive mails in a separate thread.
         """
         try:
+            print("STARTING")
             while self._run_receive_thread:
                 print('current num:', threading.active_count())
-                print("STARTING")
-                code = self._transition_socket.recv(34)
+                code = self._transition_socket.recv(ceil((globals_module.OBJECT_ID_LENGTH * 4) / 3) + 2)
                 print("CODE1 IS: ", code)
                 if code == b'-1':
                     break
@@ -832,7 +910,6 @@ class User:
         - mail: The new mail object.
         """
         print("HELLO BROTHER")
-        # TODO - problem with pressing received button
         # Update the GUI to reflect the new mail
         sleep(randint(1, 5) / 10)  # Avoid collisions
         print('EMAIL ID TO SEND TO GET:::', email_id)
