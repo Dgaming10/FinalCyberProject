@@ -61,13 +61,13 @@ class DataBaseService:
 
     def get_all_sent_emails(self, email):
         """
-        Retrieve all sent mails for a given email.
+        Retrieve all sent mails for a given email, sorted by date.
 
         Parameters:
         - email (str): User's email.
 
         Returns:
-        list: List of sent mails.
+        list: List of sent mails sorted by date.
         """
         ansList = []
         for ans in self._db['mails'].find({
@@ -75,7 +75,7 @@ class DataBaseService:
             "deleted": {
                 "$nin": [email]
             }
-        }, {}):
+        }).sort("creation_date", -1):  # Sorting by date in descending order
             ansList.append(ans)
         return ansList
 
@@ -100,7 +100,7 @@ class DataBaseService:
                 "$nin": [email]
             },
             'creation_date': {'$lte': datetime.datetime.now()}
-        }, {}):
+        }, {}).sort("creation_date", -1):
             ansList.append(ans)
         return ansList
 
