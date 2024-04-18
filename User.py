@@ -17,12 +17,6 @@ from Base64 import Base64
 from File import File
 from Email import Email
 
-SMTP_SERVER_IP = '192.168.0.181'
-POP3_SERVER_IP = '192.168.0.181'
-
-SMTP_SERVER_PORT = 1111
-POP3_SERVER_PORT = 1112
-
 
 # FIX OPEN SOCKET AGAIN AFTER EXIT AND CONSIDER SENDING THE WHOLE MAIL AT THE BEGINNING
 
@@ -54,7 +48,7 @@ class User:
     - login: Handle the login process.
     - register: Handle the registration process.
     - register_page: Display the registration page.
-    - open_loginPage: Open the login page.
+    - open_login_page: Open the login page.
     - select_file: Open a file dialog to select a file.
     - open_send_email_window: Open the window for sending emails.
     - validate_before_send: Validate input before sending an email.
@@ -81,64 +75,25 @@ class User:
         # Initialize GUI elements
         self.root = tk.Tk()
         self.root.title("MailUN")
-        self.root.geometry("500x600")
+        self.root.geometry("550x600")
         self.root.configure(bg="#f0f0f0")
         self.root.protocol("WM_DELETE_WINDOW", self.close_program)
 
-        self._loginPage = tk.Frame(self.root)
-        self._registerPage = tk.Frame(self.root)
+        self._login_frame = tk.Frame(self.root)
+        self._register_frame = tk.Frame(self.root)
         self._emails_frame = tk.Frame(self.root)
         self._single_email_frame = tk.Frame(self.root)
         self._send_email_frame = tk.Frame(self.root)
 
-        self._registration_label_register = None
-        self._email_label_register = None
-        self._email_entry_reg_register = None
-        self._password_label_register = None
-        self._password_entry_reg_register = None
-        self._first_name_label_register = None
-        self._first_name_entry_register = None
-        self._last_name_label_register = None
-        self._last_name_entry_register = None
-        self._birth_date_label_register = None
-        self._birth_date_entry_register = None
-        self._register_button_register = None
-        self._login_button1 = None
-        self._email_label = None
-        self._email_entry = None
-        self._password_label = None
-        self._password_entry = None
-        self._login_button = None
-        self._register_button = None
-        self._send_email_recipients_label = None
-        self._send_email_recipients_entry = None
-        self._send_email_subject_label = None
-        self._send_email_subject_entry = None
-        self._send_email_message_label = None
-        self._send_email_message_text = None
-        self._send_email_send_button = None
-        self._send_email_back_button = None
-        self._emails_top_label = None
-        self._login_register_button = None
-        self._send_email_scheduled_label = None
-        self._send_email_scheduled_date = None
-        self._send_email_scheduled_hour = None
-        self._send_email_scheduled_check_btn = None
-        self._send_email_scheduled_minute = None
-        self._send_email_scheduled_hour_label = None
-        self._send_email_scheduled_minute_label = None
-        self._send_email_open_file_button = None
-        self._single_email_save_button = None
-        self._single_email_delete_button = None
-
         self._transition_socket: socket = None
         self._pop3_socket: socket = None
         self._is_scheduled_btn = tk.IntVar()
-        self._receive_thread: threading.Thread = None
+        self._receive_thread = None
         self._run_receive_thread = False
+        self._running = True
 
-        self._emails_top_label = tk.Label(self._emails_frame, text="MUN MAILS")
-        self._emails_top_label.pack(side='top', pady=5)
+        emails_top_label = tk.Label(self._emails_frame, text="MUN MAILS")
+        emails_top_label.pack(side='top', pady=5)
 
         self._side_menu_frame = tk.Frame(self._emails_frame, bg="#f0f0f0")  # Add this line
 
@@ -154,7 +109,7 @@ class User:
         # Add GUI initialization logic here
         self.login_page()
         self.register_page()
-        self._loginPage.pack(fill="both", expand=1)
+        self._login_frame.pack(fill="both", expand=1)
         self.root.mainloop()
 
     @staticmethod
@@ -168,7 +123,7 @@ class User:
         Returns:
         bool: True if the password is valid, False otherwise.
         """
-        password_pattern = r"^[a-zA-Z0-9\-_\.!@#$%]{11,16}$"
+        password_pattern = r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%])[a-zA-Z\d!@#$%]{11,16}$"
         return re.match(password_pattern, password) is not None
 
     @staticmethod
@@ -202,29 +157,33 @@ class User:
         """
         Display the login page.
         """
-        self._email_label = tk.Label(self._loginPage, text="Email", bg="#f0f0f0")
-        self._email_label.pack(pady=10)
+        email_label = tk.Label(self._login_frame, text="Email", bg="#f0f0f0")
+        email_label.pack(pady=10)
 
-        self._email_entry = tk.Entry(self._loginPage, width=30, font=("Helvetica", 12))
-        self._email_entry.pack(pady=5)
+        email_login_entry = tk.Entry(self._login_frame, width=30, font=("Helvetica", 12),)
+        email_login_entry.pack(pady=5)
 
-        self._password_label = tk.Label(self._loginPage, text="Password:", bg="#f0f0f0")
-        self._password_label.pack(pady=10)
+        password_label = tk.Label(self._login_frame, text="Password:", bg="#f0f0f0")
+        password_label.pack(pady=10)
 
-        self._password_entry = tk.Entry(self._loginPage, show="•", width=30, font=("Helvetica", 12))
-        self._password_entry.pack(pady=5)
+        password_login_entry = tk.Entry(self._login_frame, show="•", width=30, font=("Helvetica", 12))
+        password_login_entry.pack(pady=5)
 
-        self._login_button = tk.Button(self._loginPage, text="Login",
-                                       command=lambda: self.login(self._email_entry.get(), self._password_entry.get()),
+        show_password_button = tk.Checkbutton(self._login_frame, text="Show Password",
+                                              command=lambda: User.toggle_show_password(password_login_entry))
+        show_password_button.pack()
+
+        login_login_button = tk.Button(self._login_frame, text="Login",
+                                       command=lambda: self.login(email_login_entry.get(), password_login_entry.get()),
                                        bg="#4caf50",
-                                       fg="white", width=20,
+                                       fg="white", width=20, bd=0,
                                        font=("Helvetica", 12))
 
-        self._login_button.pack(pady=10)
+        login_login_button.pack(pady=10)
 
-        self._login_register_button = tk.Button(self._loginPage, text="Don't have an account? Register!",
-                                                command=self.open_register_page)
-        self._login_register_button.pack(pady=10)
+        login_register_button = tk.Button(self._login_frame, text="Don't have an account? Register!",
+                                          command=self.open_register_page, bd=1)
+        login_register_button.pack(pady=10)
 
     def login(self, email, password):
         """
@@ -239,13 +198,16 @@ class User:
             self.stop_pop3_connection()
             self._email = Base64.Encrypt(email)
             self.start_pop3_connection()
-            messagebox.showinfo("Login", f"Logged in with email: {email}")
+            if self._running is False:
+                return
             try:
+                messagebox.showinfo("Login", f"Logged in with email: {email}")
                 self._pop3_socket.send(b'LOGIN')
                 self._pop3_socket.recv(3)
 
                 random_prefix = ''.join(choice(globals_module.ASCII_LETTERS) for _ in range(4))
-                login_tuple_pickle = random_prefix.encode() + pickle.dumps((Base64.Encrypt(email), Base64.Encrypt(password)))
+                login_tuple_pickle = random_prefix.encode() + pickle.dumps(
+                    (Base64.Encrypt(email), Base64.Encrypt(password)))
                 self._pop3_socket.send(len(login_tuple_pickle).to_bytes(4, byteorder='big'))
                 self._pop3_socket.recv(3)
                 self._pop3_socket.send(login_tuple_pickle)
@@ -259,16 +221,20 @@ class User:
                     messagebox.showinfo("Successful login!",
                                         f"Hey {Base64.Decrypt(user_dict['first_name'])}! Welcome to MailUN")
 
-                    self._loginPage.destroy()
-                    self._registerPage.destroy()
+                    self._login_frame.destroy()
+                    self._register_frame.destroy()
                     self._age = user_dict['age']
                     self._first_name = user_dict['first_name']
                     self._last_name = user_dict['last_name']
                     self._email = user_dict['email']
                     self.start_smtp_connection()
+                    if self._running is False:
+                        return
                     print("connected to server from", self._transition_socket)
                     print('calling restart_thread from login')
                     self.restart_thread()
+                    self.root.title(
+                        f"MailUN\tWelcome {Base64.Decrypt(self._first_name)} {Base64.Decrypt(self._last_name)}!")
             except (socket.error, pickle.PickleError) as e:
                 print('------------------------- Login Error ---------------------------', e)
                 messagebox.showerror("Error occurred!", "Logging in process")
@@ -276,19 +242,13 @@ class User:
         else:
             messagebox.showerror("Error", "Invalid email or password format")
 
-    def register(self):
+    def register(self, email, password, first_name, last_name, birth_date):
         """
         Handle the registration process.
         """
-        print('hey!!!!')
-        email = self._email_entry_reg_register.get()
-
-        password = self._password_entry_reg_register.get()
-        first_name = self._first_name_entry_register.get()
-        last_name = self._last_name_entry_register.get()
         try:
             # Parse the date string into a datetime object
-            birth_date = datetime.datetime.strptime(self._birth_date_entry_register.get(), "%d-%m-%Y")
+            birth_date = datetime.datetime.strptime(birth_date, "%d-%m-%Y")
 
             # Check if the birthdate is not in the future
             if birth_date > datetime.datetime.now() or datetime.datetime.now().year - birth_date.year > 150:
@@ -304,104 +264,139 @@ class User:
                 messagebox.showerror("Error occurred!", "Invalid password format")
                 return
 
-            pattern = r'^[abc]+$'
-            if 2 < len(first_name) < 30 and 2 < len(last_name) < 30 and first_name.isalpha() and last_name.isalpha():
-                print('entered loop cool')
-                self.stop_pop3_connection()
-                self._email = Base64.Encrypt(email)
-                self.start_pop3_connection()
-                self._pop3_socket.send(b'REGISTER')
-                self._pop3_socket.recv(3)
-                current_date = datetime.datetime.now()
-                age = current_date.year - birth_date.year - ((current_date.month, current_date.day) <
-                                                             (birth_date.month, birth_date.day))
-                dict_so_send = {'email': Base64.Encrypt(email), 'password': Base64.Encrypt(password),
-                                'first_name': Base64.Encrypt(first_name),
-                                'last_name': Base64.Encrypt(last_name), 'age': age}
-                pickle_dumps = pickle.dumps(dict_so_send)
-                self._pop3_socket.send((len(pickle_dumps) + 4).to_bytes(4, byteorder='big'))
-                self._pop3_socket.recv(3)
-                random_prefix = ''.join(choice(globals_module.ASCII_LETTERS) for _ in range(4))
-                self._pop3_socket.send(random_prefix.encode() + pickle_dumps[::-1])
-                reg_code = self._pop3_socket.recv(1).decode()
-                print('reg_Cide', reg_code)
-                if reg_code == 'S':
-                    messagebox.showinfo("Successful register!",
-                                        f"Hey {first_name}! Welcome to MailUN")
-                    self._loginPage.destroy()
-                    self._registerPage.destroy()
-                    self._age = age
-                    self._first_name = Base64.Encrypt(first_name)
-                    self._last_name = Base64.Encrypt(last_name)
-                    self.start_smtp_connection()
-                    print("connected to server from", self._transition_socket)
-                    print('calling restart thread from register')
-                    self.restart_thread()
-                else:
-                    messagebox.showerror("Error occurred!", "Email address already exists or another error occurred")
+            if not (2 < len(first_name) < 30 and 2 < len(
+                    last_name) < 30 and first_name.isalpha() and last_name.isalpha()):
+                messagebox.showerror("Error occurred!", "Invalid first name or last name format")
+                return
+
+            self.stop_pop3_connection()
+            self._email = Base64.Encrypt(email)
+            self.start_pop3_connection()
+            self._pop3_socket.send(b'REGISTER')
+            self._pop3_socket.recv(3)
+            current_date = datetime.datetime.now()
+            age = current_date.year - birth_date.year - ((current_date.month, current_date.day) <
+                                                         (birth_date.month, birth_date.day))
+            dict_so_send = {'email': Base64.Encrypt(email), 'password': Base64.Encrypt(password),
+                            'first_name': Base64.Encrypt(first_name),
+                            'last_name': Base64.Encrypt(last_name), 'age': age}
+            pickle_dumps = pickle.dumps(dict_so_send)
+            self._pop3_socket.send((len(pickle_dumps) + 4).to_bytes(4, byteorder='big'))
+            self._pop3_socket.recv(3)
+            random_prefix = ''.join(choice(globals_module.ASCII_LETTERS) for _ in range(4))
+            self._pop3_socket.send(random_prefix.encode() + pickle_dumps[::-1])
+            reg_code = self._pop3_socket.recv(1).decode()
+            print('reg_Cide', reg_code)
+            if reg_code == 'S':
+                messagebox.showinfo("Successful register!",
+                                    f"Hey {first_name}! Welcome to MailUN")
+                self._login_frame.destroy()
+                self._register_frame.destroy()
+                self._age = age
+                self._first_name = Base64.Encrypt(first_name)
+                self._last_name = Base64.Encrypt(last_name)
+                self.start_smtp_connection()
+                if self._running is False:
+                    return
+                print("connected to server from", self._transition_socket)
+                print('calling restart thread from register')
+                self.restart_thread()
+                self.root.title(
+                    f"MailUN\tWelcome {Base64.Decrypt(self._first_name)} {Base64.Decrypt(self._last_name)}!")
+            else:
+                messagebox.showerror("Error occurred!", "Email address already exists or another error occurred")
 
         except ValueError:
             # If parsing fails, the date string is not valid
             messagebox.showerror("Error occurred!", "Please enter a valid birth date")
             return
 
+    @staticmethod
+    def toggle_show_password(password_entry_reg_register):
+        if password_entry_reg_register.config()['show'][4] == '•':
+            password_entry_reg_register.config(show="")
+        else:
+            password_entry_reg_register.config(show="•")
+
     def register_page(self):
         """
         Display the registration page.
         """
-        self._registration_label_register = tk.Label(self._registerPage, text="Registration Form",
-                                                     font=("Helvetica", 16))
-        self._registration_label_register.pack(pady=10)
+        registration_label_register = tk.Label(self._register_frame, text="Registration Form",
+                                               font=("Helvetica", 16))
+        registration_label_register.pack(pady=10)
 
-        self._email_label_register = tk.Label(self._registerPage, text="Email (****@mun.com):")
-        self._email_label_register.pack()
+        email_label_register = tk.Label(self._register_frame, text="Email (****@mun.com):")
+        email_label_register.pack()
 
-        self._email_entry_reg_register = tk.Entry(self._registerPage, width=30)
-        self._email_entry_reg_register.pack()
+        email_entry_reg_register = tk.Entry(self._register_frame, width=30)
+        email_entry_reg_register.pack()
 
-        self._password_label_register = tk.Label(self._registerPage, text="Password:")
-        self._password_label_register.pack()
+        password_label_register = tk.Label(self._register_frame, text="Password:")
+        password_label_register.pack()
 
-        self._password_entry_reg_register = tk.Entry(self._registerPage, show="•", width=30)
-        self._password_entry_reg_register.pack()
+        password_entry_reg_register = tk.Entry(self._register_frame, show="•", width=30)
+        password_entry_reg_register.pack()
 
-        self._first_name_label_register = tk.Label(self._registerPage, text="First Name:")
-        self._first_name_label_register.pack()
+        show_password_button = tk.Checkbutton(self._register_frame, text="Show Password",
+                                              command=lambda: User.toggle_show_password(password_entry_reg_register))
+        show_password_button.pack()
 
-        self._first_name_entry_register = tk.Entry(self._registerPage, width=30)
-        self._first_name_entry_register.pack()
+        first_name_label_register = tk.Label(self._register_frame, text="First Name:")
+        first_name_label_register.pack()
 
-        self._last_name_label_register = tk.Label(self._registerPage, text="Last Name:")
-        self._last_name_label_register.pack()
+        first_name_entry_register = tk.Entry(self._register_frame, width=30)
+        first_name_entry_register.pack()
 
-        self._last_name_entry_register = tk.Entry(self._registerPage, width=30)
-        self._last_name_entry_register.pack()
+        last_name_label_register = tk.Label(self._register_frame, text="Last Name:")
+        last_name_label_register.pack()
 
-        self._birth_date_label_register = tk.Label(self._registerPage, text="Birth Date (DD-MM-YYYY):")
-        self._birth_date_label_register.pack()
+        last_name_entry_register = tk.Entry(self._register_frame, width=30)
+        last_name_entry_register.pack()
 
-        self._birth_date_entry_register = tk.Entry(self._registerPage, width=30)
-        self._birth_date_entry_register.pack()
+        birth_date_label_register = tk.Label(self._register_frame, text="Birth Date (DD-MM-YYYY):")
+        birth_date_label_register.pack()
 
-        self._register_button_register = tk.Button(self._registerPage, text="Submit", command=self.register,
-                                                   bg="#4caf50", fg="white",
-                                                   width=20,
-                                                   font=("Helvetica", 12))
-        self._register_button_register.pack(pady=10)
+        birth_date_entry_register = tk.Entry(self._register_frame, width=30)
+        birth_date_entry_register.pack()
 
-        self._login_button1 = tk.Button(self._registerPage, text="Login", command=self.open_loginPage, bg="#2196F3",
-                                        fg="white",
-                                        width=20,
-                                        font=("Helvetica", 13))
+        register_button_register = tk.Button(self._register_frame, text="Submit",
+                                             command=lambda: self.register(email_entry_reg_register.get(),
+                                                                           password_entry_reg_register.get(),
+                                                                           first_name_entry_register.get(),
+                                                                           last_name_entry_register.get(),
+                                                                           birth_date_entry_register.get()),
+                                             bg="#4caf50", fg="white",
+                                             width=25, bd=0,
+                                             font=("Helvetica", 12))
+        register_button_register.pack(pady=10)
 
-        self._login_button1.pack(pady=10)
+        login_button1 = tk.Button(self._register_frame, text="Login", command=self.open_login_page, bg="#2196F3",
+                                  fg="white",
+                                  width=25,
+                                  font=("Helvetica", 13), bd=0)
 
-    def open_loginPage(self):
+        login_button1.pack(pady=10)
+
+        hello_label_register = tk.Label(self._register_frame, text="Your password must:\n"
+                                                                   "- Contain at least 1 lowercase letter (a-z)\n"
+                                                                   "- Contain at least 1 uppercase letter (A-Z)\n"
+                                                                   "- Contain at least 1 digit (0-9)\n"
+                                                                   "- Contain at least 1 symbol out of !@#$%\n"
+                                                                   "- Be between 11 and 16 characters in length\n"
+                                                                   "\n"
+                                                                   "Allowed characters: Lowercase letters (a-z), "
+                                                                   "Uppercase letters (A-Z), Digits (0-9), "
+                                                                   "Symbols (!@#$%)"
+                                        )
+        hello_label_register.pack(pady=10)
+
+    def open_login_page(self):
         """
         Open the login page.
         """
-        self._loginPage.pack(fill='both', expand=1)
-        self._registerPage.forget()
+        self._login_frame.pack(fill='both', expand=1)
+        self._register_frame.forget()
 
     def select_files(self):
         filename = tk.filedialog.askopenfilenames(title="Select files",
@@ -417,96 +412,103 @@ class User:
         for widget in self._send_email_frame.winfo_children():
             widget.destroy()
         # Recipients
-        self._send_email_recipients_label = tk.Label(self._send_email_frame, text="Recipients:")
-        self._send_email_recipients_label.pack()
+        send_email_recipients_label = tk.Label(self._send_email_frame, text="Recipients:")
+        send_email_recipients_label.pack()
 
-        self._send_email_recipients_entry = tk.Entry(self._send_email_frame)
-        self._send_email_recipients_entry.pack(fill="x")
+        send_email_recipients_entry = tk.Entry(self._send_email_frame)
+        send_email_recipients_entry.pack(fill="x")
 
         # Subject
-        self._send_email_subject_label = tk.Label(self._send_email_frame, text="Subject:")
-        self._send_email_subject_label.pack()
+        send_email_subject_label = tk.Label(self._send_email_frame, text="Subject:")
+        send_email_subject_label.pack()
 
-        self._send_email_subject_entry = tk.Entry(self._send_email_frame)
-        self._send_email_subject_entry.pack(fill="x")
+        send_email_subject_entry = tk.Entry(self._send_email_frame)
+        send_email_subject_entry.pack(fill="x")
 
         # Message
-        self._send_email_message_label = tk.Label(self._send_email_frame, text="Message:")
-        self._send_email_message_label.pack()
+        send_email_message_label = tk.Label(self._send_email_frame, text="Message:")
+        send_email_message_label.pack()
 
-        self._send_email_message_text = tk.Text(self._send_email_frame, height=10, width=40)
-        self._send_email_message_text.pack()
+        send_email_message_text = tk.Text(self._send_email_frame, height=10, width=40)
+        send_email_message_text.pack()
 
-        self._send_email_scheduled_label = tk.Label(self._send_email_frame, text="Message:")
-        self._send_email_scheduled_label.pack()
+        send_email_scheduled_label = tk.Label(self._send_email_frame, text="Message:")
+        send_email_scheduled_label.pack()
 
-        self._send_email_scheduled_date = DateEntry(self._send_email_frame, width=12, background='darkblue',
-                                                    foreground='white', borderwidth=2)
-        self._send_email_scheduled_date.pack(pady=10)
+        send_email_scheduled_date = DateEntry(self._send_email_frame, width=12, background='darkblue',
+                                              foreground='white', borderwidth=2, mindate=datetime.date.today())
+        send_email_scheduled_date.pack(pady=10)
 
-        self._send_email_scheduled_hour = ttk.Spinbox(
+        send_email_scheduled_hour = ttk.Spinbox(
             self._send_email_frame,
             from_=0,
             to=23,
             wrap=True,
             width=3
         )
-        self._send_email_scheduled_hour.set("0")
-        self._send_email_scheduled_hour.place(relx=0.6, rely=0.8, anchor=tk.CENTER)
+        send_email_scheduled_hour.set("0")
+        send_email_scheduled_hour.place(relx=0.6, rely=0.8, anchor=tk.CENTER)
 
-        self._send_email_scheduled_hour_label = tk.Label(self._send_email_frame, text="Hours:")
-        self._send_email_scheduled_hour_label.place(relx=0.6, rely=0.75, anchor=tk.CENTER)
+        send_email_scheduled_hour_label = tk.Label(self._send_email_frame, text="Hours:")
+        send_email_scheduled_hour_label.place(relx=0.6, rely=0.75, anchor=tk.CENTER)
 
-        self._send_email_scheduled_minute = ttk.Spinbox(
+        send_email_scheduled_minute = ttk.Spinbox(
             self._send_email_frame,
             from_=0,
             to=59,
             wrap=True,
             width=3
         )
-        self._send_email_scheduled_minute.set("0")
-        self._send_email_scheduled_minute.place(relx=0.7, rely=0.8, anchor=tk.CENTER)
+        send_email_scheduled_minute.set("0")
+        send_email_scheduled_minute.place(relx=0.7, rely=0.8, anchor=tk.CENTER)
 
-        self._send_email_scheduled_minute_label = tk.Label(self._send_email_frame, text="Minutes:")
-        self._send_email_scheduled_minute_label.place(relx=0.7, rely=0.75, anchor=tk.CENTER)
+        send_email_scheduled_minute_label = tk.Label(self._send_email_frame, text="Minutes:")
+        send_email_scheduled_minute_label.place(relx=0.7, rely=0.75, anchor=tk.CENTER)
 
-        self._send_email_scheduled_check_btn = tk.Checkbutton(
+        send_email_scheduled_check_btn = tk.Checkbutton(
             self._send_email_frame, text='Enable Scheduled Email', variable=self._is_scheduled_btn,
             onvalue=True, offvalue=False)
-        self._send_email_scheduled_check_btn.place(relx=0.3, rely=0.8, anchor=tk.CENTER)
+        send_email_scheduled_check_btn.place(relx=0.3, rely=0.8, anchor=tk.CENTER)
 
-        self._send_email_send_button = tk.Button(self._send_email_frame, text="Send", command=self.send_email)
-        self._send_email_send_button.pack()
+        send_email_send_button = tk.Button(self._send_email_frame, text="Send", bg="#4caf50",
+                                           command=lambda: self.send_email(send_email_recipients_entry.get()
+                                                                           , send_email_scheduled_date.get_date(),
+                                                                           send_email_subject_entry.get(),
+                                                                           send_email_message_text.get("1.0", 'end-1c'),
+                                                                           send_email_send_button,
+                                                                           send_email_scheduled_hour.get(),
+                                                                           send_email_scheduled_minute.get()))
+        send_email_send_button.pack()
 
-        self._send_email_open_file_button = tk.Button(self._send_email_frame, text="Choose files",
-                                                      command=self.select_files)
-        self._send_email_open_file_button.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
-        self._send_email_back_button = tk.Button(self._send_email_frame, text="Go Back",
-                                                 command=self.restart_thread)
-        self._send_email_back_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
+        send_email_open_file_button = tk.Button(self._send_email_frame, text="Choose files",
+                                                command=self.select_files, bg="#FFFF33")
+        send_email_open_file_button.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
+        send_email_back_button = tk.Button(self._send_email_frame, text="Go Back",
+                                           command=self.restart_thread)
+        send_email_back_button.place(relx=0.5, rely=0.9, anchor=tk.CENTER)
 
         self._send_email_frame.pack(fill='both', expand=1)
 
-    def validate_before_send(self):
+    def validate_before_send(self, hours, minutes, recipients, scheduled_date):
         """
         Validate input before sending an email.
 
         Returns:
         bool: True if the input is valid, False otherwise.
         """
-        hour = self._send_email_scheduled_hour.get()
-        minutes = self._send_email_scheduled_minute.get()
-        if self._send_email_recipients_entry.get() == '':
+        if recipients == '':
             messagebox.showerror("Error", "Please enter a one or more recipient")
             return False
         elif self._is_scheduled_btn.get() == 1:
             try:
-                int(hour)
-                int(minutes)
-                if not (0 <= int(hour) < 24 and 0 <= int(minutes) < 60):
-                    int("saf")
+                current_time = datetime.datetime.now()
+                if (scheduled_date == datetime.date.today() and
+                        datetime.datetime(current_time.year, current_time.month, current_time.day,
+                                          int(hours), int(minutes)) < current_time):
+                    raise ValueError
+
             except ValueError:
-                messagebox.showerror("Error", "Please enter a valid time")
+                messagebox.showerror("Error", "Please enter a valid time and date")
                 return False
 
         return True
@@ -528,7 +530,7 @@ class User:
     def start_pop3_connection(self):
         try:
             self._pop3_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._pop3_socket.connect((POP3_SERVER_IP, POP3_SERVER_PORT))
+            self._pop3_socket.connect((globals_module.POP3_SERVER_IP, globals_module.POP3_SERVER_PORT))
             self._pop3_socket.send(self._email.encode())
             self._pop3_socket.recv(3)
         except socket.error:
@@ -549,7 +551,7 @@ class User:
     def start_smtp_connection(self):
         try:
             self._transition_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._transition_socket.connect((SMTP_SERVER_IP, SMTP_SERVER_PORT))
+            self._transition_socket.connect((globals_module.SMTP_SERVER_IP, globals_module.SMTP_SERVER_PORT))
             self._transition_socket.send(self._email.encode())
             self._transition_socket.recv(3)
         except socket.error:
@@ -571,40 +573,39 @@ class User:
                 self._pop3_socket = None
                 self._transition_socket = None
                 self.root.destroy()
+                self._running = False
 
-    def send_email(self):
+    def send_email(self, recipients, send_email_scheduled_date, subject, message, send_email_send_button,
+                   hours, minutes):
         """
         Send an email.
         """
-        validation_ans = self.validate_before_send()
-        print("VALIDATION IS :", validation_ans, int(self._send_email_scheduled_minute.get()),
-              int(self._send_email_scheduled_hour.get()))
+        validation_ans = self.validate_before_send(hours, minutes, recipients, send_email_scheduled_date)
 
         if validation_ans is False:
             return
 
         print('is alive?', self._receive_thread.is_alive(), threading.active_count())
-        emails: str = self._send_email_recipients_entry.get()
+        emails: str = recipients
         realEmails = [Base64.Encrypt(i.strip()) for i in emails.split(',') if i != ""]
 
         realEmails = list(set(realEmails))
         print(f"mail sent from {self._email} to: {realEmails}")
-        # db = DataBaseServer.DataBaseService()
-        # recipients = [DataBaseServer.mongo_obj_to_User(db.email_to_mongo_obj(email)) for email in realEmails]
+
         if self._is_scheduled_btn.get() == 1:
-            new_datetime = datetime.datetime(year=self._send_email_scheduled_date.get_date().year,
-                                             month=self._send_email_scheduled_date.get_date().month,
-                                             day=self._send_email_scheduled_date.get_date().day,
-                                             hour=int(self._send_email_scheduled_hour.get()),
-                                             minute=int(self._send_email_scheduled_minute.get()))
+            new_datetime = datetime.datetime(year=send_email_scheduled_date.year,
+                                             month=send_email_scheduled_date.month,
+                                             day=send_email_scheduled_date.day,
+                                             hour=int(hours),
+                                             minute=int(minutes))
             sendEmail: Email = Email(self._email, realEmails,
-                                     Base64.Encrypt(self._send_email_subject_entry.get()),
-                                     Base64.Encrypt(self._send_email_message_text.get("1.0", 'end-1c')),
+                                     Base64.Encrypt(subject),
+                                     Base64.Encrypt(message),
                                      new_datetime)
         else:
             sendEmail: Email = Email(self._email, realEmails,
-                                     Base64.Encrypt(self._send_email_subject_entry.get()),
-                                     Base64.Encrypt(self._send_email_message_text.get("1.0", 'end-1c')), )
+                                     Base64.Encrypt(subject),
+                                     Base64.Encrypt(message))
 
         if self._is_scheduled_btn.get() != 1:
             sendEmail.update_creation_date()
@@ -664,16 +665,15 @@ class User:
 
         print("EMAIL SENT! ", sentBytes)
 
-        # anti spam
-        self._send_email_send_button.configure(state='disabled')
-        self._send_email_frame.after(2000, lambda: self._send_email_send_button.configure(state='normal'))
+        send_email_send_button.configure(state='disabled')
+        self._send_email_frame.after(2000, lambda: send_email_send_button.configure(state='normal'))
 
     def open_register_page(self):
         """
         Open the registration page.
         """
-        self._registerPage.pack(fill='both', expand=1)
-        self._loginPage.forget()
+        self._register_frame.pack(fill='both', expand=1)
+        self._login_frame.forget()
 
     @staticmethod
     def saveEmail(email: Email):
@@ -744,6 +744,8 @@ class User:
             messagebox.showerror("Error occurred!", "Place - getting single email")
             self._pop3_socket.close()
             self.start_pop3_connection()
+            if self._running is False:
+                return
             self.open_emails_window(None)
             return
 
@@ -779,13 +781,13 @@ class User:
         emails_label = tk.Label(self._single_email_frame, text=emails_label_text)
         # Pack the label at the bottom center
         emails_label.pack(side=tk.BOTTOM, pady=10)
-        self._single_email_save_button = tk.Button(self._single_email_frame, text="Save email",
-                                                   command=lambda: User.saveEmail(email))
-        self._single_email_save_button.pack(side=tk.BOTTOM, pady=5)
+        single_email_save_button = tk.Button(self._single_email_frame, text="Save email",
+                                             command=lambda: User.saveEmail(email))
+        single_email_save_button.pack(side=tk.BOTTOM, pady=5)
 
-        self._single_email_delete_button = tk.Button(self._single_email_frame, text="Delete email",
-                                                     command=lambda: self.delete_email(email))
-        self._single_email_delete_button.pack(side=tk.BOTTOM, pady=5)
+        single_email_delete_button = tk.Button(self._single_email_frame, text="Delete email",
+                                               command=lambda: self.delete_email(email))
+        single_email_delete_button.pack(side=tk.BOTTOM, pady=5)
 
         self._emails_frame.pack_forget()
         self._single_email_frame.pack(fill='both', expand=1)
@@ -842,7 +844,7 @@ class User:
 
             for label_text, email in zip(labels, emails):
                 label = tk.Label(self._emails_frame, text=label_text, bg="lightgray",
-                                 relief="raised", cursor="hand2")
+                                 relief="raised", cursor="hand2", fg="#333", bd = 1)
                 label.bind("<Button-1>", lambda event, email2=email: self.open_single_email_window(email2))
                 label.pack(fill=tk.X)
             self._emails_frame.pack(fill='both', expand=1)

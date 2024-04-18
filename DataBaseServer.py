@@ -72,7 +72,6 @@ class DataBaseService:
         ansList = []
         for ans in self._db['mails'].find({
             "sender.email": email,
-            'creation_date': {'$lte': datetime.datetime.now()},
             "deleted": {
                 "$nin": [email]
             }
