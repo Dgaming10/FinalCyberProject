@@ -2,11 +2,13 @@ import pickle
 import socket
 import threading
 
-from Base64 import Base64
-from DataBaseServer import DataBaseService
-from File import File
-from Email import Email
 from pymongo.errors import ConnectionFailure
+
+import globals_module
+from CryptoService import CryptoService
+from DataBaseServer import DataBaseService
+from Email import Email
+from File import File
 
 SMTP_SERVER_IP = '192.168.0.181'
 SMTP_SERVER_PORT = 1111
@@ -20,13 +22,6 @@ class SMTPServer:
     - _port (int): The port on which the SMTP server is running.
     - _sock (socket.socket): The server socket.
     - _client_dict (dict): Dictionary to store client sockets.
-
-    Methods:
-    - __init__: Initialize the SMTP server.
-    - _receive_email: Receive and process an email from a client.
-    - start: Start the SMTP server.
-    - stop: Stop the SMTP server.
-    - _send_email: Send an email to the database and return the ID.
     """
 
     def __init__(self, port):
@@ -42,6 +37,7 @@ class SMTPServer:
         self._is_client_available: dict = {}
         self._db = DataBaseService()
         self._running = True
+        self._keys_dict = {}
 
     def __del__(self):
         """
@@ -50,6 +46,7 @@ class SMTPServer:
         del self._db
         self._is_client_available.clear()
         self._client_dict.clear()
+        self._keys_dict.clear()
 
     def _receive_email(self, client_sock: socket.socket):
         """
@@ -60,73 +57,78 @@ class SMTPServer:
         """
         email_addr = None
         try:
-            email_addr = client_sock.recv(1024).decode()
+            key = CryptoService.generate_random_key()
+            key_encrypted = key[::-1]
+            client_sock.send(len(key_encrypted).to_bytes(4, byteorder="big"))
+            client_sock.recv(3)
+            client_sock.send(key_encrypted)
+
+            enc_ack = CryptoService.encrypt_string("ACK", key)
+            enc_len = len(enc_ack)  # This is the length of the received or sent ACK's, using the given key
+            email_addr_len = int.from_bytes(client_sock.recv(4), byteorder='big')
+            client_sock.send(enc_ack)
+            email_addr = CryptoService.decrypt_string(client_sock.recv(email_addr_len).decode(), key)
             self._client_dict[email_addr] = client_sock
             self._is_client_available[email_addr] = True
             files = []
-            client_sock.send(b'ACK')
+            client_sock.send(enc_ack)
+            self._keys_dict[email_addr] = key
             while True:
-                print("HELLO ITS ME, talking to:", email_addr)
-                files.clear()
-                client_msg = client_sock.recv(4)
-                print('client_msg:', client_msg)
-                if client_msg == b'CLSE':
-                    client_sock.send(b'-1')
-                    print('sent -1')
+                client_msg = CryptoService.decrypt_string(client_sock.recv(enc_len).decode(), key)
+                if not client_msg:
+                    raise ConnectionRefusedError
+                # Short messages like these will have length that is <= than 'ACK's
+                if client_msg == 'CLSE':
+                    client_sock.send(CryptoService.encrypt_string("-1", key))
                     self._is_client_available[email_addr] = False
                     continue
-                elif client_msg == b'OPEN':
+                elif client_msg == 'OPEN':
                     self._is_client_available[email_addr] = True
                     continue
+                # If client_msg is 'SEND'
+                client_sock.send(enc_ack)
+                files_list_length = int.from_bytes(client_sock.recv(4), byteorder='big')
 
-                files_list_length = int.from_bytes(client_msg, byteorder='big')
-                print("GPT SOME", files_list_length)
-                client_sock.send(b'ACK')
-                m = client_sock.recv(files_list_length)
-                print(len(m))
+                client_sock.send(enc_ack)
 
-                files_list: [File] = pickle.loads(m[4:])
-                client_sock.send(b'ACK')
-                print('sent second ack')
+                files_list: [File] = pickle.loads(CryptoService.decrypt_obj(client_sock.recv(files_list_length), key))
+                client_sock.send(enc_ack)
+
                 for f in files_list:
-                    files.append((Base64.Decrypt(f.name), Base64.Decrypt(f.extension), f.content[::-1]))
+                    files.append((f.name, f.extension,
+                                  f.content,
+                                  CryptoService.encrypt_string(CryptoService.decrypt_string(f.file_key, key))))
 
                 pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
-                print('pickle_mail_len', pickle_mail_len)
-                client_sock.send(b'ACK')
-                sentMail: Email = pickle.loads(client_sock.recv(pickle_mail_len))
-                client_sock.send(b'ACK')
-                print('sent an ack for this shit')
 
-                print('id of sent email:', id(sentMail))
+                client_sock.send(enc_ack)
+                sent_email: Email = pickle.loads(CryptoService.decrypt_obj(client_sock.recv(pickle_mail_len), key))
+                client_sock.send(enc_ack)
 
-                print('RECEIVED', sentMail.recipients, sentMail.message, sentMail.subject, sentMail.creation_date,
-                      sentMail.sender)
                 if files:
                     files = self._save_files(files)
+                    files.clear()
 
-                new_id: str = self._send_email(sentMail, files)
-                print(self._client_dict)
-                print(self._is_client_available)
-                for email in sentMail.recipients:
+                new_id: str = self._send_email(sent_email, files)
+                for email in sent_email.recipients:
                     try:
 
                         if not (self._client_dict.get(email) is not None and self._is_client_available[email] is True):
-                            print('):')
                             continue
-                        print("SENT:", files)
                         email_sock: socket.socket = self._client_dict[email]
-                        email_sock.send(Base64.Encrypt(new_id).encode())
-                        print('sent', new_id.encode(), 'to', email, type(new_id), new_id)
-                        print("SENT BY SOCKET TO", email)
+                        enc_cmd = CryptoService.encrypt_string(new_id, self._keys_dict[email])
+                        email_sock.send(len(enc_cmd).to_bytes(4, byteorder='big'))
+                        email_sock.recv(enc_len)
+                        email_sock.send(enc_cmd)
                     except KeyError:
                         print(email, 'not found / connected at the moment')
 
-        except (socket.error, pickle.PickleError) as e:
+        except (socket.error, pickle.PickleError, EOFError) as e:
             print('----------------------SMTP error--------------------------', e)
             if email_addr is not None:
                 self._client_dict.pop(email_addr)
                 self._is_client_available.pop(email_addr)
+                self._keys_dict.pop(email_addr)
             client_sock.close()
             print("ERROR IN SERVER")
 
@@ -152,7 +154,6 @@ class SMTPServer:
         except KeyboardInterrupt:
             print("Server shutting down...")
         finally:
-            # Close the server socket
             self._sock.close()
 
     def stop(self):
@@ -163,7 +164,7 @@ class SMTPServer:
 
     def _send_email(self, mailToSend: Email, files) -> str:
         """
-        Send an email to the database and return the ID.
+        Sends an email to the database and return the ID.
 
         Parameters:
         - mailToSend (Email): The email to be sent.
@@ -172,7 +173,9 @@ class SMTPServer:
         str: The ID of the stored email.
         """
 
-        return self._db.store_email(mailToSend.sender, mailToSend.recipients, mailToSend.subject, mailToSend.message,
+        return self._db.store_email(mailToSend.sender, mailToSend.recipients,
+                                    CryptoService.encrypt_string(mailToSend.subject),
+                                    CryptoService.encrypt_string(mailToSend.message),
                                     mailToSend.creation_date, files)
 
     def _save_files(self, files) -> list:
@@ -180,6 +183,5 @@ class SMTPServer:
 
 
 if __name__ == "__main__":
-    # Create and start the SMTP server
     server = SMTPServer(SMTP_SERVER_PORT)
     server.start()

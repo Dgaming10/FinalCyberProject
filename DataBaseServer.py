@@ -1,9 +1,9 @@
-from Base64 import Base64
 import datetime
 
-from gridfs import GridFS
 import pymongo
 from bson import ObjectId
+from gridfs import GridFS
+
 from globals_module import CONNECTION_STRING
 
 
@@ -69,15 +69,15 @@ class DataBaseService:
         Returns:
         list: List of sent mails sorted by date.
         """
-        ansList = []
+        ans_list = []
         for ans in self._db['mails'].find({
             "sender.email": email,
             "deleted": {
                 "$nin": [email]
             }
         }).sort("creation_date", -1):  # Sorting by date in descending order
-            ansList.append(ans)
-        return ansList
+            ans_list.append(ans)
+        return ans_list
 
     def get_all_received_emails(self, email):
         """
@@ -146,22 +146,22 @@ class DataBaseService:
         Returns:
         str: ID of the stored email.
         """
-        senderOBJ = self.email_to_mongo_obj(fromMail)
-        toOBJ = []
+        sender_obj = self.email_to_mongo_obj(fromMail)
+        to_obj = []
         for email in toMails:
             tmp = self.email_to_mongo_obj(email)
             if tmp is not None:
-                toOBJ.append(tmp)
+                to_obj.append(tmp)
 
-        if not toOBJ:
+        if not to_obj:
             return
 
         new_item = {
             "message": message,
             "creation_date": creation_date,
             "subject": subject,
-            "sender": senderOBJ,
-            "recipients": toOBJ,
+            "sender": sender_obj,
+            "recipients": to_obj,
             "files": files,
             "deleted": []
         }
@@ -195,11 +195,11 @@ class DataBaseService:
 
         return final_ans
 
-    def get_file_name_ex_by_id(self, file_id) -> tuple:
+    def get_file_name_ex_key_by_id(self, file_id) -> tuple:
         if isinstance(file_id, str):
             file_id = ObjectId(file_id)
         f = self._fs.get(file_id)
-        return f.filename, f.filex
+        return f.filename, f.filex, f.k
 
     def get_file_content_by_id(self, file_id) -> bytes:
         if isinstance(file_id, str):
@@ -209,7 +209,7 @@ class DataBaseService:
     def save_files(self, files) -> list:
         final_ans = []
         for tup in files:
-            file_i_id = self._fs.put(tup[2], filename=tup[0], filex=tup[1])
+            file_i_id = self._fs.put(tup[2], filename=tup[0], filex=tup[1], k=tup[3])
             final_ans.append(file_i_id)
 
         return final_ans
