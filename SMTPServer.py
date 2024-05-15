@@ -75,11 +75,13 @@ class SMTPServer:
             self._keys_dict[email_addr] = key
             while True:
                 client_msg = CryptoService.decrypt_string(client_sock.recv(enc_len).decode(), key)
+                print('client msg:',client_msg, email_addr)
                 if not client_msg:
                     raise ConnectionRefusedError
                 # Short messages like these will have length that is <= than 'ACK's
                 if client_msg == 'CLSE':
-                    client_sock.send(CryptoService.encrypt_string("-1", key))
+                    enc_cmd = CryptoService.encrypt_string("-1", key)
+                    client_sock.send(enc_cmd)
                     self._is_client_available[email_addr] = False
                     continue
                 elif client_msg == 'OPEN':
@@ -94,37 +96,39 @@ class SMTPServer:
                 files_list: [File] = pickle.loads(CryptoService.decrypt_obj(client_sock.recv(files_list_length), key))
                 client_sock.send(enc_ack)
 
-                for f in files_list:
-                    files.append((f.name, f.extension,
-                                  f.content,
-                                  CryptoService.encrypt_string(CryptoService.decrypt_string(f.file_key, key))))
-
                 pickle_mail_len = int.from_bytes(client_sock.recv(4), byteorder='big')
 
                 client_sock.send(enc_ack)
                 sent_email: Email = pickle.loads(CryptoService.decrypt_obj(client_sock.recv(pickle_mail_len), key))
-                client_sock.send(enc_ack)
-
-                if files:
-                    files = self._save_files(files)
-                    files.clear()
-
-                new_id: str = self._send_email(sent_email, files)
+                existing_emails = []
                 for email in sent_email.recipients:
+                    if self._db.email_to_mongo_obj(email) is not None:
+                        existing_emails.append(email)
+                shared_key = CryptoService.generate_files_key(existing_emails)
+                print(existing_emails)
+                print('shared key:', shared_key)
+                for f in files_list:
+                    files.append((f.name, f.extension, CryptoService.encrypt_obj(f.content, shared_key)))
+                    print('content:', CryptoService.encrypt_obj(f.content, shared_key))
+                files = self._save_files(files)
+                new_id: str = self._send_email(sent_email, files)
+                client_sock.send(enc_ack)
+                for email in existing_emails:
                     try:
-
+                        email = CryptoService.decrypt_b64(email[::-1])
                         if not (self._client_dict.get(email) is not None and self._is_client_available[email] is True):
                             continue
                         email_sock: socket.socket = self._client_dict[email]
                         enc_cmd = CryptoService.encrypt_string(new_id, self._keys_dict[email])
-                        email_sock.send(len(enc_cmd).to_bytes(4, byteorder='big'))
-                        email_sock.recv(enc_len)
                         email_sock.send(enc_cmd)
                     except KeyError:
                         print(email, 'not found / connected at the moment')
 
+                if files:
+                    files.clear()
+
         except (socket.error, pickle.PickleError, EOFError) as e:
-            print('----------------------SMTP error--------------------------', e)
+            print('----------------------SMTP error--------------------------', e, email_addr)
             if email_addr is not None:
                 self._client_dict.pop(email_addr)
                 self._is_client_available.pop(email_addr)
@@ -173,7 +177,7 @@ class SMTPServer:
         str: The ID of the stored email.
         """
 
-        return self._db.store_email(mailToSend.sender, mailToSend.recipients,
+        return self._db.store_email(CryptoService.encrypt_b64(mailToSend.sender)[::-1], mailToSend.recipients,
                                     CryptoService.encrypt_string(mailToSend.subject),
                                     CryptoService.encrypt_string(mailToSend.message),
                                     mailToSend.creation_date, files)

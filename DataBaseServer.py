@@ -3,7 +3,7 @@ import datetime
 import pymongo
 from bson import ObjectId
 from gridfs import GridFS
-
+from CryptoService import CryptoService
 from globals_module import CONNECTION_STRING
 
 
@@ -70,8 +70,9 @@ class DataBaseService:
         list: List of sent mails sorted by date.
         """
         ans_list = []
+        # TODO -> make sure this didnt destroy something
         for ans in self._db['mails'].find({
-            "sender.email": email,
+            "sender.email": {"$eq": email},
             "deleted": {
                 "$nin": [email]
             }
@@ -89,7 +90,7 @@ class DataBaseService:
         Returns:
         list: List of received mails.
         """
-        ansList = []
+        ans_list = []
         for ans in self._db['mails'].find({
             "recipients": {
                 "$elemMatch": {
@@ -101,8 +102,8 @@ class DataBaseService:
             },
             'creation_date': {'$lte': datetime.datetime.now()}
         }, {}).sort("creation_date", -1):
-            ansList.append(ans)
-        return ansList
+            ans_list.append(ans)
+        return ans_list
 
     def email_to_mongo_obj(self, email) -> dict:
         """
@@ -114,17 +115,16 @@ class DataBaseService:
         Returns:
         dict: MongoDB object representing the user.
         """
-        ansDICT = self._db['users'].find_one({"email": email}, {})
-        print("find one for", email, ansDICT)
-        return ansDICT
+        ans_dict = self._db['users'].find_one({"email": email}, {})
+        return ans_dict
 
-    def store_user(self, email, password, first_name, last_name, age) -> str:
+    def store_user(self, email, password, first_name, last_name, birth_date) -> str:
         new_item = {
             'email': email,
             'password': password,
             'first_name': first_name,
             'last_name': last_name,
-            'age': age
+            'birth_date': birth_date
         }
         to_return = self._db["users"].insert_one(new_item)
         final_ans = str(to_return.inserted_id)
@@ -182,7 +182,6 @@ class DataBaseService:
         Returns:
         dict: Found email.
         """
-        print("EMAIL ID: ", email_id)
         email = self._db['mails'].find_one({'_id': ObjectId(email_id)}, {})
         return email
 
@@ -195,11 +194,11 @@ class DataBaseService:
 
         return final_ans
 
-    def get_file_name_ex_key_by_id(self, file_id) -> tuple:
+    def get_file_name_ex_by_id(self, file_id) -> tuple:
         if isinstance(file_id, str):
             file_id = ObjectId(file_id)
         f = self._fs.get(file_id)
-        return f.filename, f.filex, f.k
+        return f.filename, f.filex
 
     def get_file_content_by_id(self, file_id) -> bytes:
         if isinstance(file_id, str):
@@ -209,7 +208,7 @@ class DataBaseService:
     def save_files(self, files) -> list:
         final_ans = []
         for tup in files:
-            file_i_id = self._fs.put(tup[2], filename=tup[0], filex=tup[1], k=tup[3])
+            file_i_id = self._fs.put(tup[2], filename=tup[0], filex=tup[1])
             final_ans.append(file_i_id)
 
         return final_ans

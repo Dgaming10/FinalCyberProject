@@ -3,28 +3,24 @@ import pickle
 import re
 import socket
 import threading
-import time
-from random import randint
 from time import sleep
 import tkinter as tk
 from os import path
 from tkinter import messagebox, ttk, filedialog
+
 from tkcalendar import DateEntry
-from random import choice
-from math import ceil
-from string import ascii_letters
 
 import globals_module
 from CryptoService import CryptoService
-from File import File
 from Email import Email
+from File import File
 
 
 class User:
     """
     Class representing a user in the MailUN application.
 
-    Parameters:
+    Attributes:
     - files_list (list): List of files the user wants to send
     - age (int): The age of the user.
     - first_name (str): The first name of the user.
@@ -55,7 +51,6 @@ class User:
         self._def_enc_len = None
         self._ack_enc = None
         self._files_list = []
-        self._age = None
         self._first_name = None
         self._last_name = None
         self._email = None
@@ -198,14 +193,13 @@ class User:
                 self._pop3_socket.recv(self._def_enc_len)
 
                 login_tuple_pickle = CryptoService.encrypt_obj(pickle.dumps((email, password)), self._pop3_key)
-                print(login_tuple_pickle)
-                print(self._pop3_key)
                 self._pop3_socket.send(len(login_tuple_pickle).to_bytes(4, byteorder='big'))
                 self._pop3_socket.recv(self._def_enc_len)
                 self._pop3_socket.send(login_tuple_pickle)
                 len_dict = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
                 self._pop3_socket.send(self._ack_enc)
                 user_dict = pickle.loads(CryptoService.decrypt_obj(self._pop3_socket.recv(len_dict), self._pop3_key))
+                self._pop3_socket.send(self._ack_enc)
                 if len(user_dict.keys()) == 0:
                     messagebox.showerror("Login failed!", "Please try again")
                     self.stop_pop3_connection()
@@ -213,10 +207,9 @@ class User:
                     messagebox.showinfo("Successful login!",
                                         f"Hey {CryptoService.decrypt_string(user_dict['first_name'])}!"
                                         f" Welcome to MailUN")
-
+                    print(email)
                     self._login_frame.destroy()
                     self._register_frame.destroy()
-                    self._age = user_dict['age']
                     self._first_name = user_dict['first_name']
                     self._last_name = user_dict['last_name']
                     self._email = CryptoService.encrypt_string(email)
@@ -226,8 +219,8 @@ class User:
                     print("connected to server from", self._smtp_socket)
                     self.restart_thread()
                     self.root.title(
-                        f"MailUN\tWelcome {CryptoService.decrypt_string(self._first_name)} {CryptoService.decrypt_string(self._last_name)}!")
-                    self._pop3_socket.send(self._ack_enc)
+                        f"MailUN\tWelcome {CryptoService.decrypt_string(self._first_name)}"
+                        f" {CryptoService.decrypt_string(self._last_name)}!")
 
             except (socket.error, pickle.PickleError) as e:
                 print('------------------------- Login Error ---------------------------', e)
@@ -277,24 +270,21 @@ class User:
             self._pop3_socket.recv(self._def_enc_len)
             self._pop3_socket.send(enc_cmd)
             self._pop3_socket.recv(self._def_enc_len)
-            current_date = datetime.datetime.now()
-            age = current_date.year - birth_date.year - ((current_date.month, current_date.day) <
-                                                         (birth_date.month, birth_date.day))
-            dict_so_send = {'email': CryptoService.encrypt_string(email),
-                            'password': CryptoService.encrypt_string(password),
+            dict_so_send = {'email': email,
+                            'password': CryptoService.hash_string(password),
                             'first_name': CryptoService.encrypt_string(first_name),
-                            'last_name': CryptoService.encrypt_string(last_name), 'age': age}
+                            'last_name': CryptoService.encrypt_string(last_name), 'birth_date': str(birth_date.date())}
             dict_so_send = CryptoService.encrypt_obj(pickle.dumps(dict_so_send), self._pop3_key)
             self._pop3_socket.send(len(dict_so_send).to_bytes(4, 'big'))
             self._pop3_socket.recv(self._def_enc_len)
             self._pop3_socket.send(dict_so_send)
-            reg_code = CryptoService.decrypt_string(self._pop3_socket.recv(self._def_enc_len), self._pop3_key)
+            reg_code = CryptoService.decrypt_string(self._pop3_socket.recv(self._def_enc_len).decode(), self._pop3_key)
+            self._pop3_socket.send(self._ack_enc)
             if reg_code == 'S':
                 messagebox.showinfo("Successful register!",
                                     f"Hey {first_name}! Welcome to MailUN")
                 self._login_frame.destroy()
                 self._register_frame.destroy()
-                self._age = age
                 self._first_name = CryptoService.encrypt_string(first_name)
                 self._last_name = CryptoService.encrypt_string(last_name)
                 self.start_smtp_connection()
@@ -304,6 +294,7 @@ class User:
                 self.root.title(
                     f"MailUN\tWelcome {first_name} {last_name}!")
             else:
+                self._email = ""
                 messagebox.showerror("Error occurred!", "Email address already exists or another error occurred")
 
         except ValueError:
@@ -544,8 +535,8 @@ class User:
                 self._receive_thread = threading.Thread(target=self.receive_emails)
                 # Threads cannot be restarted, so it needs to be initialized again
                 self._run_receive_thread = True
-                #self._receive_thread.start()
-            #self.open_emails_window()
+                self._receive_thread.start()
+            self.open_emails_window()
         except (threading.ThreadError, socket.error):
             print('-------------------- error in restarting thread -------------------------')
             messagebox.showerror("Error occurred!", "Place - restarting thread")
@@ -650,7 +641,7 @@ class User:
             return
 
         emails: str = recipients
-        real_emails = [CryptoService.encrypt_string(i.strip(), self._smtp_key) for i in emails.split(',') if i != ""]
+        real_emails = [CryptoService.encrypt_b64(i.strip())[::-1] for i in emails.split(',') if i != ""]
 
         real_emails = list(set(real_emails))
         # Remove duplicates, if there are
@@ -661,12 +652,12 @@ class User:
                                              day=send_email_scheduled_date.day,
                                              hour=int(hours),
                                              minute=int(minutes))
-            send_email: Email = Email(self._email, real_emails,
+            send_email: Email = Email(CryptoService.decrypt_string(self._email), real_emails,
                                       subject,
                                       message,
                                       new_datetime)
         else:
-            send_email: Email = Email(self._email, real_emails,
+            send_email: Email = Email(CryptoService.decrypt_string(self._email), real_emails,
                                       subject,
                                       message)
 
@@ -681,13 +672,11 @@ class User:
                 file_path_ex = file_path_ex[:globals_module.FILE_EXTENSION_LIMIT]
 
             current_file = open(self._files_list[i], 'rb')
-            file_key = CryptoService.generate_random_key()
-            current_file_content = CryptoService.encrypt_obj(current_file.read(), file_key)
+            current_file_content = current_file.read()
             current_file.close()
 
             file_object_list.append(File(CryptoService.encrypt_string(file_path_name),
-                                         CryptoService.encrypt_string(file_path_ex), current_file_content,
-                                         CryptoService.encrypt_string(file_key.decode(), self._smtp_key)))
+                                         CryptoService.encrypt_string(file_path_ex), current_file_content))
 
         try:
 
@@ -701,7 +690,8 @@ class User:
                 # Might be a delay between the click until the actual operation
                 send_email.update_creation_date()
 
-            send_email_dumps = pickle.dumps(send_email)
+            send_email_dumps = CryptoService.encrypt_obj(pickle.dumps(send_email), self._smtp_key)
+
             files_list_dumps = CryptoService.encrypt_obj(pickle.dumps(file_object_list), self._smtp_key)
             self._smtp_socket.send(CryptoService.encrypt_string('SEND', self._smtp_key))
             self._smtp_socket.recv(self._def_enc_len)
@@ -760,14 +750,14 @@ class User:
         file_content = (
             f'Date:{email_obj.creation_date}\nFrom:{email_obj.sender}\n'
             f'To:{email_obj.recipients}\n'
-            f'Subject:{email_obj.subject}\n'
-            f'Message:{email_obj.message}\n'
+            f'Subject:{email_obj.subject[::-1]}\n'
+            f'Message:{email_obj.message[::-1]}\n'
             f'Files:{files_names}')
 
         file_to_save.write(file_content)
         file_to_save.close()
 
-    def save_file(self, file_info):
+    def save_file(self, file_info, recipients):
         """
         Saves the current file to the user's PC
 
@@ -783,13 +773,23 @@ class User:
             enc_cmd = CryptoService.encrypt_string('FILE_CON', self._pop3_key)
             self._pop3_socket.send(len(enc_cmd).to_bytes(4, byteorder='big'))
             self._pop3_socket.recv(self._def_enc_len)
+            self._pop3_socket.send(enc_cmd)
+            self._pop3_socket.recv(self._def_enc_len)
             enc_id = CryptoService.encrypt_string(str(file_info[0]), self._pop3_key)
             self._pop3_socket.send(len(enc_id).to_bytes(4, byteorder='big'))
             self._pop3_socket.recv(self._def_enc_len)
             self._pop3_socket.send(enc_id)
             file_content_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
             self._pop3_socket.send(self._ack_enc)
-            file_content = CryptoService.decrypt_obj(self._pop3_socket.recv(file_content_length))
+            recipients = [CryptoService.encrypt_b64(i.strip())[::-1] for i in recipients]
+            shared_key = CryptoService.generate_files_key(recipients)
+            print(recipients)
+            print("SK:", shared_key)
+
+            file_content = self._pop3_socket.recv(file_content_length)
+            print("CON:",file_content )
+            file_content = CryptoService.decrypt_obj(file_content, shared_key)
+            self._pop3_socket.send(self._ack_enc)
             selected_file = open(file_path, 'wb')
             selected_file.write(file_content)
             selected_file.close()
@@ -815,7 +815,7 @@ class User:
         messagebox.showinfo("Email got deleted!")
         self.open_emails_window()
 
-    def open_single_email_window(self, email):
+    def open_single_email_window(self, email: Email):
         """
         Opens the window of a specific mail.
 
@@ -834,9 +834,10 @@ class User:
             self._pop3_socket.send(enc_cmd)
             self._pop3_socket.recv(self._def_enc_len)
             files_received_obj_length = int.from_bytes(self._pop3_socket.recv(4), byteorder='big')
-            self._pop3_socket.send(self._def_enc_len)
+            self._pop3_socket.send(self._ack_enc)
             files_received_obj = pickle.loads(
                 CryptoService.decrypt_obj(self._pop3_socket.recv(files_received_obj_length), self._pop3_key))
+            self._pop3_socket.send(self._ack_enc)
         except (socket.error, pickle.PickleError) as e:
             print('-------------------- single email error -----------------------', e)
             messagebox.showerror("Error occurred!", "Place - getting single email")
@@ -866,17 +867,15 @@ class User:
 
         for i, element in enumerate(elements_list):
             button = tk.Button(grid_frame, text=element,
-                               command=lambda index=i: self.save_file(files_received_obj[index]))
+                               command=lambda index=i: self.save_file(files_received_obj[index], email.recipients))
             row, col = divmod(i, cols)
             button.grid(row=row, column=col, padx=5, pady=5)
             email.files_info.append((files_received_obj[i][1], files_received_obj[i][2]))
 
-        emails_label_text = ""
         if self._current_filter_state[0] == 'recv':
-            emails_label_text = 'received from: ' + CryptoService.decrypt_string(email.sender)
+            emails_label_text = 'received from: ' + email.sender
         else:
-            emails_label_text = 'sent to: ' + ','.join(
-                [CryptoService.decrypt_string(sent_email) for sent_email in email.recipients])
+            emails_label_text = 'sent to: ' + ','.join(email.recipients)
         emails_label = tk.Label(self._single_email_frame, text=emails_label_text)
 
         emails_label.pack(side=tk.BOTTOM, pady=10)
@@ -923,27 +922,29 @@ class User:
 
                 self._pop3_socket.send(len(enc_cmd).to_bytes(4, byteorder='big'))
                 self._pop3_socket.recv(self._def_enc_len)
+                print('1', len(enc_cmd))
                 self._pop3_socket.send(enc_cmd)
                 self._pop3_socket.recv(self._def_enc_len)
-
+                print('2')
                 len_to_receive = int.from_bytes(self._pop3_socket.recv(4), byteorder="big")
-
+                print('3', len_to_receive)
                 self._pop3_socket.send(self._ack_enc)
 
                 emails_received = self._pop3_socket.recv(len_to_receive)
-
+                print('4', emails_received)
                 emails: [Email] = pickle.loads(CryptoService.decrypt_obj(emails_received, self._pop3_key))
-            except (socket.error, pickle.PickleError) as e:
+                self._pop3_socket.send(self._ack_enc)
+            except (socket.error, pickle.PickleError) as ex:
                 messagebox.showerror("Error occurred!", "Place - loading emails")
-                print('-----------------------load emails error ------------------------', e)
+                print('-----------------------load emails error ------------------------', ex)
                 self._pop3_socket.close()
-                time.sleep(2)
+                sleep(2)
                 self.start_pop3_connection(CryptoService.decrypt_string(self._email))
                 self.open_emails_window()
                 return
 
             labels = [
-                (f"{CryptoService.decrypt_string(email.sender)} -> {CryptoService.decrypt_string(email.subject)}"
+                (f"{email.sender} -> {CryptoService.decrypt_string(email.subject)}"
                  f" | {email.creation_date}")
                 for email in emails]
 
@@ -989,10 +990,12 @@ class User:
         """
         try:
             while self._run_receive_thread:
-                code_len = int.from_bytes(self._smtp_socket.recv(4), byteorder='big')
-                self._smtp_socket.send(self._ack_enc)
-                code = CryptoService.decrypt_string(self._smtp_socket.recv(code_len), self._smtp_key)
+                print('starting')
+                code = self._smtp_socket.recv(140)
+                code = CryptoService.decrypt_string(code.decode(), self._smtp_key)
+                print('thread:', code)
                 if code == '-1':
+                    print('closing thread')
                     break
                 self.root.after(0, lambda code1=code: self.update_gui_with_new_email(code1))
         except socket.error as e:
@@ -1016,6 +1019,7 @@ class User:
             self._pop3_socket.send(self._ack_enc)
             email_dumps = CryptoService.decrypt_obj(self._pop3_socket.recv(email_obj_len), self._pop3_key)
             email_obj: Email = pickle.loads(email_dumps)
+            self._pop3_socket.send(self._ack_enc)
         except (socket.error, pickle.PickleError) as e:
             print('--------------------- error in update gui -------------------', e)
             self._pop3_socket.close()
@@ -1026,7 +1030,7 @@ class User:
         if datetime.datetime.now() < email_obj.creation_date or self._current_filter_state[1] is True:
             return
 
-        email_label_text = (f"{CryptoService.decrypt_string(email_obj.sender)}"
+        email_label_text = (f"{email_obj.sender}"
                             f" -> {CryptoService.decrypt_string(email_obj.subject)} | {email_obj.creation_date}")
 
         new_email_label = tk.Label(self._emails_frame, text=email_label_text, bg="lightgray",

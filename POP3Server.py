@@ -4,7 +4,6 @@ import threading
 
 from pymongo.errors import ConnectionFailure
 
-import globals_module
 from CryptoService import CryptoService
 from DataBaseServer import DataBaseService
 from Email import Email
@@ -47,11 +46,11 @@ class POP3Server:
         - client_sock (socket.socket): The socket for the client.
         """
         key = CryptoService.generate_random_key()
+        print('key:',key)
         key_encrypted = key[::-1]
         client_sock.send(len(key_encrypted).to_bytes(4, byteorder="big"))
         client_sock.recv(3)
         client_sock.send(key_encrypted)
-        print('key:', key)
         enc_ack = CryptoService.encrypt_string("ACK", key)
         enc_len = len(enc_ack)  # This is the length of the received or sent ACK's, using the given key
         email_enc_len = int.from_bytes(client_sock.recv(4), byteorder='big')
@@ -64,14 +63,15 @@ class POP3Server:
                 client_sock.send(enc_ack)
                 cmd = CryptoService.decrypt_string(client_sock.recv(len_cmd).decode(), key)
                 client_sock.send(enc_ack)
+                print('cmd:', cmd)
                 if not cmd:
                     raise ConnectionRefusedError
 
                 elif cmd == 'RECV':
-                    all_emails = self._dbService.get_all_received_emails(email_addr)
+                    all_emails = self._dbService.get_all_received_emails(CryptoService.encrypt_b64(email_addr)[::-1])
 
-                    all_list_dict = [Email(m.get('sender').get('email'),
-                                           [rec.get('email') for rec in m.get('recipients')],
+                    all_list_dict = [Email(CryptoService.decrypt_b64(m.get('sender').get('email')[::-1]),
+                                           [CryptoService.decrypt_b64(rec.get('email')[::-1]) for rec in m.get('recipients')],
                                            m.get('subject'), m.get('message'), m.get('creation_date'), m.get('_id')
                                            )
                                      for m in all_emails]
@@ -81,9 +81,10 @@ class POP3Server:
                     client_sock.recv(enc_len)
                     client_sock.send(all_emails_dump)
                 elif cmd == 'SENT':
-                    all_emails = self._dbService.get_all_sent_emails(email_addr)
-                    all_list_dict = [Email(m.get('sender').get('email'),
-                                           [rec.get('email') for rec in m.get('recipients')],
+                    all_emails = self._dbService.get_all_sent_emails(CryptoService.encrypt_b64(email_addr)[::-1])
+                    all_list_dict = [Email(CryptoService.decrypt_b64(m.get('sender').get('email')[::-1]),
+                                           [CryptoService.decrypt_b64(rec.get('email')[::-1]) for rec in
+                                            m.get('recipients')],
                                            m.get('subject'), m.get('message'), m.get('creation_date'), m.get('_id')
                                            )
                                      for m in all_emails]
@@ -95,9 +96,10 @@ class POP3Server:
                 elif cmd == 'FILE_CON':
                     file_object_id_len = int.from_bytes(client_sock.recv(4), byteorder='big')
                     client_sock.send(enc_ack)
-                    file_object_id = CryptoService.decrypt_string(client_sock.recv(file_object_id_len), key)
-                    file_content = CryptoService.decrypt_obj(self._dbService.get_file_content_by_id(file_object_id),
-                                                             key)
+                    file_object_id = CryptoService.decrypt_string(client_sock.recv(file_object_id_len).decode(), key)
+                    file_content = self._dbService.get_file_content_by_id(file_object_id)
+                    print('llen file:', len(file_content))
+                    print(file_content)
                     client_sock.send(len(file_content).to_bytes(4, byteorder='big'))
                     client_sock.recv(enc_len)
                     client_sock.send(file_content)
@@ -105,6 +107,9 @@ class POP3Server:
                     email_tup_length = int.from_bytes(client_sock.recv(4), byteorder='big')
                     client_sock.send(enc_ack)
                     email_tup = pickle.loads(CryptoService.decrypt_obj(client_sock.recv(email_tup_length), key))
+                    email_tup = list(email_tup)
+                    email_tup[1] = CryptoService.encrypt_b64(email_tup[1])[::-1]
+                    email_tup = tuple(email_tup)
                     self._dbService.delete_email(email_tup)
                     client_sock.send(enc_ack)
                 elif cmd == 'LOGIN':
@@ -115,8 +120,8 @@ class POP3Server:
                         client_dict_ans = {}
                     else:
                         client_dict_ans = self._dbService.authenticate_user(
-                            CryptoService.encrypt_string_hash(client_tuple[0]),
-                            CryptoService.encrypt_string_hash(client_tuple[1]))
+                            CryptoService.encrypt_b64(client_tuple[0])[::-1],
+                            CryptoService.hash_string(client_tuple[1]))
 
                     client_dict_pickle = CryptoService.encrypt_obj(pickle.dumps(client_dict_ans), key)
                     client_sock.send(len(client_dict_pickle).to_bytes(4, byteorder='big'))
@@ -129,19 +134,20 @@ class POP3Server:
                     pickle_dumps_len = int.from_bytes(client_sock.recv(4), byteorder='big')
                     client_sock.send(enc_ack)
                     pickle_dumps = pickle.loads(CryptoService.decrypt_obj(client_sock.recv(pickle_dumps_len), key))
+                    pickle_dumps['email'] = CryptoService.encrypt_b64(pickle_dumps['email'])[::-1]
                     if self._dbService.email_to_mongo_obj(pickle_dumps['email']) is not None:
                         client_sock.send(CryptoService.encrypt_string('F', key))
                         client_sock.close()
                         return
                     self._dbService.store_user(pickle_dumps['email'], pickle_dumps['password'],
                                                pickle_dumps['first_name'],
-                                               pickle_dumps['last_name'], pickle_dumps['age'])
+                                               pickle_dumps['last_name'], pickle_dumps['birth_date'])
                     client_sock.send(CryptoService.encrypt_string('S', key))
                     self._clients[email_addr] = client_sock
                 elif cmd[0:2] == "==":
-                    mongo_email = self._dbService.find_email_by_id(CryptoService.decrypt_string(cmd[2:], key))
-                    email_obj = Email(mongo_email.get('sender').get('email'),
-                                      [rec.get('email') for rec in mongo_email.get('recipients')],
+                    mongo_email = self._dbService.find_email_by_id(cmd[2:])
+                    email_obj = Email(CryptoService.decrypt_b64(mongo_email.get('sender').get('email')[::-1]),
+                                      [CryptoService.decrypt_b64(rec.get('email')[::-1]) for rec in mongo_email.get('recipients')],
                                       mongo_email.get('subject'), mongo_email.get('message')
                                       , mongo_email.get('creation_date'), mongo_email.get('_id'))
 
@@ -150,8 +156,9 @@ class POP3Server:
                     client_sock.recv(enc_len)
                     client_sock.send(mongo_email_dump)
                 else:
-                    mongo_email = self._dbService.find_email_by_id(CryptoService.decrypt_string(cmd, key))
-                    files_info = [(f_id,) + self._dbService.get_file_name_ex_key_by_id(f_id) for f_id in
+                    mongo_email = self._dbService.find_email_by_id(cmd)
+                    files_info = [(f_id,) + tuple([CryptoService.decrypt_string(field) for field in
+                                                   self._dbService.get_file_name_ex_by_id(f_id)]) for f_id in
                                   mongo_email.get('files')]
 
                     mongo_email_dump = CryptoService.encrypt_obj(pickle.dumps(files_info), key)
@@ -159,6 +166,7 @@ class POP3Server:
                     client_sock.recv(enc_len)
                     client_sock.send(mongo_email_dump)
                 client_sock.recv(enc_len)  # Final ACK after all operations
+                print('ack received')
         except (socket.error, pickle.PickleError, EOFError, ConnectionAbortedError, ConnectionRefusedError) as e:
             print("-------------------------------------------Error in pop3 server:-----------------------------", e)
             client_sock.close()
